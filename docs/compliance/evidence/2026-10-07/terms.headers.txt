@@ -1,0 +1,18 @@
+HTTP/2 200 
+accept-ranges: bytes
+access-control-allow-origin: *
+age: 191862
+cache-control: public, max-age=0, must-revalidate
+content-disposition: inline; filename="terms-of-use"
+content-type: text/html; charset=utf-8
+date: Wed, 07 Oct 2026 20:35:37 GMT
+etag: "e88a02be3330ff1aa13e0672fd02b4a3"
+last-modified: Mon, 05 Oct 2026 15:17:54 GMT
+server: Vercel
+strict-transport-security: max-age=63072000
+x-frame-options: DENY
+x-matched-path: /terms-of-use
+x-vercel-cache: HIT
+x-vercel-id: sfo1::jjqdx-1791405337098-ab554afd412d
+content-length: 166233
+
