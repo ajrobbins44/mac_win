@@ -1,0 +1,411 @@
+---
+title: "Initial API Discovery"
+output: 
+  html_document:
+    theme: cerulean
+    code_folding: hide
+    toc: true
+    toc_float: true
+---
+
+*Initial API Analysis*
+
+To determine whether my project idea using MAC.BID is possible, 
+
+```{r, message=FALSE, warning=FALSE}
+
+library(httr2)
+library(jsonlite)
+library(dplyr)
+library(stringr)
+library(readr)
+
+```
+
+**Request and parse a recent batch of auctions**
+
+```{r, message=FALSE, warning=FALSE}
+
+batch_num <- 3
+
+url <- "https://api.macdiscount.com/past-auctions?pg=1&ppg=50"
+
+# Make the request and fetch the request's results,
+# saving them in the response object
+response <- request(url) |>
+  req_perform()
+
+auctions <- response |>
+  # Using simplifyVector param to flatten the response's nested JSON
+  resp_body_json(simplifyVector = TRUE)
+
+output_path <- file.path(
+  "data",
+  "discovery",
+  "past_auctions",
+  paste0("batch", batch_num, ".csv")
+)
+
+# Check that the file does not already exist
+if (file.exists(output_path)) {
+  stop(
+    "File already exists and was not overwritten: ",
+    output_path
+  )
+} else {
+    # Save the parsed auction data
+    write.csv(
+    auctions,
+    output_path,
+    row.names = FALSE
+    )
+
+    message("Saved: ", output_path)
+}
+```
+
+```{r, message=FALSE, warning=FALSE}
+batch_num <- 1
+auctions <- read.csv("data/discovery/past_auctions/batch1.csv")
+
+auctions_by_id <- auctions |>
+  mutate(
+    # Ensure auction id is numeric
+    id = as.integer(id),
+    # Convert date_created from text into a datetime value
+    date_created = as.POSIXct(
+      date_created,
+      format = "%Y-%m-%dT%H:%M:%OSZ",
+      tz = "UTC"
+    )
+  ) |>
+  # Arrange auction id's numerically in ascending order
+  arrange(id) |>
+  mutate(
+    # Create a column containing the previous auction's creation date
+    # The first auction has no previous auction, so its value is NA
+    previous_date = lag(date_created),
+    date_went_backward = date_created < previous_date
+  )
+
+backward_summary <- auctions_by_id |>
+  count(
+    date_went_backward,
+    name = "auction_count"
+  )
+
+# Determine whether creation time ever moves backward as ID increases
+violations <- auctions_by_id |>
+  filter(date_went_backward %in% TRUE)
+
+backward_summary
+violations
+
+```
+
+```{r, message=FALSE, error=FALSE}
+
+# Determine the observed ID boundaries
+smallest_id <- min(auctions_by_id$id)
+largest_id <- max(auctions_by_id$id)
+
+# Generate every numeric ID within the observed boundaries
+possible_ids <- seq.int(
+  from = smallest_id,
+  to = largest_id
+)
+
+# Find IDs inside the range that were absent from the response
+unobserved_ids <- setdiff(
+  possible_ids,
+  auctions_by_id$id
+)
+
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+# Empty list for auction records recovered from the unobserved id's
+recovered_auctions <- list()
+
+for (id in unobserved_ids) {
+
+  # Build the API URL for this auction ID
+  url <- paste0(
+    "https://api.macdiscount.com/auctions/",
+    id
+  )
+
+  # Make the request without stopping the loop for HTTP errors
+  response <- request(url) |>
+    req_error(is_error = function(resp) FALSE) |>
+    req_perform()
+
+  # Only keep successful responses
+  if (resp_status(response) == 200) {
+
+    auction <- response |>
+      resp_body_json(simplifyVector = TRUE)
+
+    # Store each auction object recovered with the id as its identifier
+    recovered_auctions[[as.character(id)]] <- auction
+  }
+
+  message("Recovered auction: ", id)
+
+  # Brief pause before the next request
+  Sys.sleep(0.7)
+}
+
+recovered_ids <- as.integer(names(recovered_auctions))
+
+length(unobserved_ids)
+length(recovered_ids)
+
+all(unobserved_ids %in% recovered_ids)
+setequal(unobserved_ids, recovered_ids)
+
+```
+
+```{r}
+output_path <- file.path(
+  "data",
+  "discovery",
+  "recovered_auctions",
+  paste0("batch", batch_num, ".json")
+)
+
+# Prevent accidental overwriting
+if (file.exists(output_path)) {
+  stop(
+    "File already exists: ",
+    output_path
+  )
+} else {
+    # Save as json for easy loading
+    write_json(
+        recovered_auctions,
+        path = output_path,
+        pretty = TRUE,
+        auto_unbox = TRUE,
+        na = "null",
+        null = "null",
+        digits = NA
+    )
+
+    message("Saved: ", output_path)
+}
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+# Identify original column names retrieved via API from derived column names
+original_cols <- names(auctions)
+
+# New dataframe provides a copy of the auction data w/only its original columns
+original_df <- auctions_by_id |>
+  select(all_of(original_cols)) |>
+  mutate(
+    # Add a new column indicating that each row was not recovered later on
+    is_recovered = FALSE
+  )
+
+recovered_rows <- lapply(
+  recovered_auctions,
+  function(recovered_auction) {
+    
+    # Only keep the columns that occur in the original API data
+    recovered_auction <- recovered_auction[original_cols]
+    
+    # Replace NULL with NA
+    recovered_auction <- lapply(
+      recovered_auction,
+      function(value) {
+        if (is.null(value)) NA else value
+      }
+    )
+    
+    # Convert into a dataframe row
+    as.data.frame(recovered_auction)
+  }
+)
+
+# Combine all df rows into a single recovered dataframe
+recovered_df <- do.call(
+  rbind,
+  recovered_rows
+)
+
+recovered_df <- recovered_df |>
+  mutate(
+    id = as.integer(id),
+    date_created = as.POSIXct(
+      date_created,
+      format = "%Y-%m-%dT%H:%M:%OSZ",
+      tz = "UTC"
+    ), 
+    is_recovered = TRUE
+  )
+
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+complete_df <- bind_rows(
+  original_df,
+  recovered_df
+) |>
+  mutate(
+    id = as.integer(id),
+    date_launched = as.POSIXct(
+      date_launched,
+      format = "%Y-%m-%dT%H:%M:%OSZ",
+      tz = "UTC"
+    )
+  ) |>
+  arrange(id)
+ 
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+auction_patterns <- complete_df |>
+  mutate(
+    prefix = str_extract(auction_number, "^[A-Z]+"),
+    suffix = str_extract(auction_number, "[^-]+$")
+  ) |>
+  filter(
+    # Henderson and North Las Vegas
+    building_id %in% c(24, 27)
+  ) |>
+  count(
+    building_id,
+    location_id,
+    location_name,
+    prefix,
+    suffix,
+    sort = TRUE
+  )
+
+auction_patterns
+```
+
+```{r, message=FALSE, warning=FALSE}
+output_path <- file.path(
+  "data",
+  "discovery",
+  "auction_patterns",
+  paste0("batch", batch_num, ".csv")
+)
+
+if (file.exists(output_path)) {
+  stop(
+    "File already exists: ",
+    output_path
+  )
+} else {
+    write_csv(
+        auction_patterns,
+        output_path
+    )
+
+    message("Saved: ", output_path)
+}
+```
+
+```{r, message=FALSE, warning=FALSE}
+
+all_batches <- 1:3
+
+comparison_cols <- c(
+  "building_id",
+  "location_id",
+  "location_name",
+  "prefix",
+  "suffix",
+  "n"
+)
+
+# setNames() assigns names to elements of a vector or list
+# NOT to be confused with setnames() that renames dt or df columns
+all_batch_patterns <- setNames(
+    vector("list", length(all_batches)), 
+    paste0("batch", all_batches)
+)
+
+for (batch_num in all_batches) {
+
+    batch_name <- paste0("batch", batch_num)
+
+    input_path <- file.path(
+        "data",
+        "discovery",
+        "auction_patterns",
+        paste0(batch_name, ".csv")
+    )
+    
+    if (!file.exists(input_path)) {
+        stop("File not found: ", input_path)
+    } else {
+        all_batch_patterns[[batch_name]] <- read_csv(
+            input_path,
+            show_col_types = FALSE
+        ) |>
+        select(all_of(comparison_cols))
+
+    }
+
+}
+
+    # New df stores all rows of batch_patterns with id named batch_id = [batch_name]
+    combined_patterns <- bind_rows(
+        all_batch_patterns,
+        .id = "batch_id"
+    )
+
+    pattern_behavior <- combined_patterns |>
+        group_by(
+            building_id,
+            location_id,
+            location_name,
+            prefix,
+            suffix
+        ) |>
+        summarise(
+            batches_observed = n_distinct(batch_id),
+            total_auctions_observed = sum(n, na.rm = TRUE),
+            min_batch_count = min(n, na.rm = TRUE),
+            max_batch_count = max(n, na.rm = TRUE),
+            .groups = "drop"
+        ) |>
+        mutate(
+            evidence_level = case_when(
+                batches_observed == length(all_batches) ~ "recurring",
+                batches_observed >= 2 ~ "observed_multiple",
+                TRUE ~ "observed_once"
+            ) 
+        ) |>
+        arrange(
+            building_id,
+            prefix,
+            suffix
+        )
+
+output_path <- file.path(
+  "data",
+  "discovery",
+  "auction_patterns",
+  paste0("pattern_behavior_batches", min(all_batches), "-", max(all_batches), ".csv")
+)
+
+if (file.exists(output_path)) {
+    stop(
+      "File already exists: ",
+      output_path
+    )
+
+  } else {
+    write.csv(pattern_behavior, output_path)
+    message("Saved: ", output_path)
+  }
+```
