@@ -23,10 +23,10 @@ to be empty. Item records are obtained through endpoint 2: auction items by auct
 | JSON field | Observed type | Null in sample? | Preliminary decision | Reason or interpretation |
 |---|---|---:|---|---|
 | `id` | Integer | No | Retain | Numeric auction ID; required for retrieving auction items. Rename `auction_id` in the retained dataset. |
-| `date_created` | ISO 8601 timestamp | No | Retain | Indicates when the auction record was created. Potential auction-preparation feature. |
+| `date_created` | ISO 8601 timestamp | No | Exclude | Indicates when the auction record was created. |
 | `auction_number` | String | No | Retain | Human-readable auction identifier and connection to generated candidates. |
-| `closing_date` | ISO 8601 timestamp | No | Retain | Auction closing time and primary temporal reference. |
-| `opening_date` | ISO 8601 timestamp | No | Retain | Allows calculation of the auction’s scheduled duration. |
+| `opening_date` | ISO 8601 timestamp | No | Derive and discard | Allows calculation of the auction’s scheduled duration. |
+| `closing_date` | ISO 8601 timestamp | No | Derive and discard | Auction closing time and primary temporal reference. |
 | `external_folder_name` | Null; likely string | Yes | Exclude | Appears to be an internal operational field. |
 | `pickup_date` | String | No | Investigate | Human-formatted pickup information, not a complete timestamp. Pickup timing could potentially affect bidding. |
 | `closed_for_entry` | Integer flag | No | QA only | Likely indicates whether new inventory can be added; not necessarily whether bidding is open. |
