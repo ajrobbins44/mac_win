@@ -23,7 +23,7 @@ to be empty. Item records are obtained through endpoint 2: auction items by auct
 | JSON field | Observed type | Null in sample? | Preliminary decision | Reason or interpretation |
 |---|---|---:|---|---|
 | `id` | Integer | No | Retain | Numeric auction ID; required for retrieving auction items. Rename `auction_id` in the retained dataset. |
-| `date_created` | ISO 8601 timestamp | No | Exclude | Indicates when the auction record was created. |
+| `date_created` | ISO 8601 timestamp | No | Exclude | Indicates when the auction record was created. Only useful as an internal, administrative field. |
 | `auction_number` | String | No | Retain | Human-readable auction identifier and connection to generated candidates. |
 | `opening_date` | ISO 8601 timestamp | No | Derive and discard | Allows calculation of the auction’s scheduled duration. |
 | `closing_date` | ISO 8601 timestamp | No | Derive and discard | Auction closing time and primary temporal reference. |

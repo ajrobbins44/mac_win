@@ -3,26 +3,11 @@ from itertools import islice
 from pathlib import Path
 from time import sleep
 from typing import Any
-from urllib.parse import quote
-from dotenv import load_dotenv
-import os
 import requests
 
+from config import PROJECT_ROOT, PROJECT_USER_AGENT, BASE_URL
 from generate_auction_candidates import (
     generate_auction_candidates,
-)
-
-PROJECT_ROOT = "/Users/AmberRobbins/mac_win"
-BASE_URL = "https://api.macdiscount.com"
-
-CONTACT_EMAIL = os.getenv(
-    "AUCTION_RESEARCH_CONTACT"
-)
-
-PROJECT_USER_AGENT = (
-    "MAC.BIDAuctionResearch/0.1 "
-    "(BYU-Idaho senior project: bid-prediction research "
-    "contact: ${CONTACT_EMAIL})"
 )
 
 def create_session() -> requests.Session:
@@ -291,8 +276,8 @@ def verify_lot_id(
 
 def main():
 
-    start_date = date(2026, 2, 1)
-    end_date = date(2026, 3, 1)
+    start_date = date(2026, 9, 1)
+    end_date = date(2026, 10, 1)
 
     input_file_name = "pattern_behavior_batches1-3.csv"
 

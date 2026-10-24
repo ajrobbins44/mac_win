@@ -24,12 +24,13 @@ Data recovered from the API is initially decoded into Python objects. When the d
 
 SQLite does not have storage classes that map directly to other Python data types - including booleans, dates, datetimes, and fixed-precision decimal values. These values must therefore be represented using one of SQLite’s supported storage classes. The following table defines how these logical data types are represented within the project database.
 
+### Table `General Storage Conventions`
 
 | Logical value | SQLite type | Storage convention |
 |---|---|---|
 | Identifiers | `INTEGER` or `TEXT` | Numeric identifiers use `INTEGER`, while alphanumeric identifiers use `TEXT`. |
 | Boolean | `INTEGER` | Store `0` for false and `1` for true. |
-| Money | `INTEGER` | Convert dollar amounts to integer cents before storage. |
+| Money | `INTEGER` | Store using the unit defined in the Monetary Value Conventions table. Monetary column names must end in _dollars or _cents to make the stored unit explicit. |
 | Count | `INTEGER` | Store whole-number counts without conversion. |
 | Duration | `INTEGER` | Store durations in the unit named by the column, normally seconds, but potentially milliseconds. |
 | Ratio or rate | `REAL` | Use only for noncurrency calculations such as ratios and averages. |
@@ -37,6 +38,24 @@ SQLite does not have storage classes that map directly to other Python data type
 | Calendar date | `TEXT` | Store as `YYYY-MM-DD`. |
 | Category | `TEXT` | Preserve the source value initially; standardize through documented transformations. |
 | Missing value | `NULL` | Never replace missing values with zero, an empty string, or `"unknown"` unless that value has a distinct documented meaning. |
+
+### Table: `Monetary Value Conventions`
+
+| Monetary value | Example processed fields | SQLite type | Storage convention |
+|---|---|---|---|
+| Individual bid amount | `bid_amount_dollars` | `INTEGER` | Store as whole dollars because MAC.BID bidding occurs in one-dollar increments. |
+| Displayed bid amount | `displayed_bid_dollars` | `INTEGER` | Store as whole dollars after confirming that the value has no fractional component. |
+| Winning bid amount | `winning_bid_amount_dollars` | `INTEGER` | Store the final accepted bid as whole dollars. This is the primary model outcome. |
+| Predicted winning bid | `predicted_bid_dollars` | `INTEGER` | Store the user-facing prediction as whole dollars after applying the documented rounding rule. |
+| Prediction interval bounds | `prediction_lower_dollars`, `prediction_upper_dollars` | `INTEGER` | Store user-facing interval limits as whole dollars after applying the documented rounding rules. |
+| Retail or reference price | `retail_price_cents` | `INTEGER` | Convert dollars to integer cents. For example, `104.99` becomes `10499`. |
+| Instant-win price | `instant_win_price_cents` | `INTEGER` | Convert to integer cents, even if currently observed values contain no fractional dollars. |
+| Fixed fee or additional cost | `buyers_assurance_cost_cents`, confirmed flat-fee fields | `INTEGER` | Convert to integer cents because fees may contain or produce fractional-dollar values. |
+| Calculated final customer price | `predicted_final_price_cents`, `observed_final_price_cents` | `INTEGER` | Store in cents because premiums, fees, and taxes may produce fractional-dollar totals. |
+| Percentage or rate | Confirmed premium or tax-rate fields | `REAL` or documented scaled `INTEGER` | Do not treat rates as currency. Store according to a separately documented rate convention after confirming whether the source uses a fraction or percentage. |
+| Unresolved monetary-looking source value | `lot_fee_override_source`, `buyers_premium_override_source` | Source-preserving staging type | Do not convert until the field’s meaning and unit have been verified. An override might be a flat dollar amount, percentage, or another configuration value. |
+| Monetary model diagnostic | `mae_dollars`, if stored | `REAL` | Continuous evaluation statistics may use fractional dollars because they are measurements, not valid bid increments. |
+| Missing monetary value | Any nullable monetary column | `NULL` | Preserve missing values as `NULL`; never substitute zero unless the source explicitly reports zero. |
 
 ## Validation and transformations
 
@@ -100,12 +119,11 @@ One row represents one auction. The stored data is shared by all items in the au
 |---|---|---|---|---:|---|---|
 | `auction_id` | `INTEGER` | Original | `id` | No | Primary key | Numeric auction identifier. |
 | `auction_number` | `TEXT` | Original | `auction_number` | No | Unique | Alphanumeric auction identifier. |
-| `auction_opens_date` | `TEXT` | Derived | `opening_date` | Yes | "YYYY-MM-DD" | Scheduled auction opening date. |
-| `auction_closes_date` | `TEXT` | Derived | `closing_date` | Yes | "YYYY-MM-DD" | Scheduled auction closing date. |
-| `auction_launched_at_utc` | `TEXT` | Original | `date_launched` | Yes | ISO 8601 timestamp | Time the auction was launched. |
+| `auction_opening_date` | `TEXT` | Derived | `opening_date` | Yes | "YYYY-MM-DD" | Scheduled auction opening date. |
+| `auction_closing_date` | `TEXT` | Derived | `closing_date` | Yes | "YYYY-MM-DD" | Scheduled auction closing date. |
 | `pickup_date_text` | `TEXT` | Original | `pickup_date` | Yes | Provisional | Pickup date formatted as day of the week (MM/DD). |
 | `abandon_date` | `TEXT` | Derived | `abandon_date` | Yes | "YYYY-MM-DD" | Reported deadline associated with abandoned purchases. |
-| `scheduled_duration_seconds` | `INTEGER` | Derived | Closing time minus opening time | Yes | — | Scheduled duration of the auction. |
+| `scheduled_duration_days` | `INTEGER` | Derived | Closing date minus opening date | Yes | — | Scheduled duration of the auction. |
 | `launch_to_close_seconds` | `INTEGER` | Derived | Closing time minus launch time | Yes | — | Time from launch until scheduled closing. |
 | `building_id` | `INTEGER` | Original | `building_id` | No | Indexed | Warehouse identifier used to define project scope. |
 | `location_id` | `INTEGER` | Original | `location_id` | No | — | The item's location. One building_id can have many location_id's attached to it. |
@@ -126,7 +144,7 @@ One row represents one auction. The stored data is shared by all items in the au
 | `collection_run_id` | `INTEGER` | Operational | Collector | No | Foreign key | Collection run that created or most recently refreshed the record. |
 | `collected_at_utc` | `TEXT` | Operational | Collector clock | No | ISO 8601 timestamp | Time this auction response was collected. |
 
-`buyers_premium_override` cannot be added until figuring out whether the source value represents a currency amount, percentage, or decimal rate.
+`buyers_premium_override` cannot be added until figuring out whether the source value represents a currency amount, boolean, or some other class.
 
 ## Table: `auction_items`
 
@@ -169,21 +187,20 @@ One row represents one auction lot item. While many of the same fields can be fe
 | `has_damage_note` | `INTEGER` | Derived | Nonempty `damaged_note` | Yes | Boolean check | Whether a damage note was present. |
 | `observed_bid_record_count` | `INTEGER` | Derived | Count of retrieved bid records | Yes | Nonnegative | Number of bid events returned by the bid-history endpoint. |
 | `bid_count_difference` | `INTEGER` | Derived | Reported bid count minus observed bid records | Yes | — | Difference between the two bid-count measures. |
-| `end_time_difference_seconds` | `INTEGER` | Derived | Bid-history end time minus item close time | Yes | — | Used to identify timestamp inconsistencies. |
 | `winning_to_retail_ratio` | `REAL` | Derived | Winning bid divided by retail price | Yes | Nonnegative | Final bid as a proportion of reported retail price. |
 | `discount_rate` | `REAL` | Derived | `1 - winning_to_retail_ratio` | Yes | — | Proportion below reported retail price. |
 | `collection_run_id` | `INTEGER` | Operational | Collector | No | Foreign key | Collection run associated with the record. |
 | `collected_at_utc` | `TEXT` | Operational | Collector clock | No | ISO 8601 timestamp | Time the lot response was collected. |
 
-## Table: `bid_events`
+## Table: `bid_history`
 
-One row represents one bid event returned by the public bid-history endpoint.
+One row represents one bid occurrence returned by the public bid-history endpoint.
 
 The API’s anonymous bidder label is used transiently while calculating bidder-based features but is not retained in this table.
 
 | Column | SQLite type | Origin | Source or formula | Nullable | Key or constraint | Description |
 |---|---|---|---|---:|---|---|
-| `bid_event_id` | `INTEGER` | Operational | Locally generated | No | Primary key | Surrogate key for the stored bid event. |
+| `bid_history_id` | `INTEGER` | Operational | Locally generated | No | Primary key | Surrogate key for the stored bid event. |
 | `lot_id` | `INTEGER` | Original | `lot_id` | No | Foreign key | Lot associated with the bid. |
 | `source_position` | `INTEGER` | Operational | Position in API array | No | Nonnegative | Original response position for audit purposes. |
 | `bid_sequence` | `INTEGER` | Derived | Chronological order after sorting | No | Unique with `lot_id` | One-based chronological sequence within the lot. |

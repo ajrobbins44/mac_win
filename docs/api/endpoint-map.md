@@ -23,20 +23,6 @@ This document describes the public endpoints used for auction discovery and rese
 
 ## Endpoint map
 
-### GET `/auctions/{auction_number}?getItems=0`
-
-**Purpose:** Verify that a generated auction number exists, obtain its
-numeric auction ID, and collect auction-level metadata.
-
-**Example:** `/auctions/HEA2602-01-A1?getItems=0`
-
-**Response shape:** One auction JSON object.
-
-**Collection note:** Because `getItems=0`, the `items` array is expected
-to be empty. Item records are obtained through the auction-ID endpoint.
-
-
-
 | Step | Starting value | Request used | Value obtained for the next step |
 |---|---|---|---|
 1 | string `auction_number` | `GET /auctions/{auction_number}?getItems=0` | numeric `auction_id` and auction metadata |
