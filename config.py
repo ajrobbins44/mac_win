@@ -20,7 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 # Becomes the user agent header for all API requests
 PROJECT_USER_AGENT = (
-    "MAC.BIDAuctionResearch/0.1 "
+    "MacWin research crawler "
     "(BYU-Idaho senior project: bid-prediction research; "
     f"contact: {CONTACT_EMAIL})"
 )

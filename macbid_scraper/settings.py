@@ -7,22 +7,28 @@
 #     https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 from pathlib import Path
-from config import PROJECT_ROOT
+from config import PROJECT_ROOT, PROJECT_USER_AGENT
+
+# -------------------------------------------------------------------
+# Scrapy settings for the MAC.BID research crawler.
+# Policy references below point to sections of 
+# docs/compliance/request-policy.md
+# -------------------------------------------------------------------
 
 BOT_NAME = "macbid_scraper"
 
-STAGING_DATABASE = Path(
+STAGING_DATABASE_PATH = Path(
     PROJECT_ROOT,
     "data",
     "staging",
-    "macbid_staging.sqlite3"
+    "macbid_staging_test.sqlite3"
 )
 
 SCRAPER_VERSION = "1.0.0"
 STAGING_SCHEMA_VERSION = "1.0.0"
 
 ITEM_PIPELINES = {
-    "macbid_scraper.pipelines.MacbidScraperPipeline": 300
+    "macbid_scraper.pipelines.StagingSQLitePipeline": 300
 }
 
 SPIDER_MODULES = ["macbid_scraper.spiders"]
@@ -31,73 +37,59 @@ NEWSPIDER_MODULE = "macbid_scraper.spiders"
 ADDONS = {}
 
 
-# Crawl responsibly by identifying yourself (and your website) on the user-agent
-#USER_AGENT = "macbid_scraper (+http://www.yourdomain.com)"
+# Policy: "Identification and records"
+# Descriptive User-Agent stating the project purpose and a contact email.
+USER_AGENT = PROJECT_USER_AGENT
 
-# Obey robots.txt rules
+# Policy: "Access boundaries"
+# Follow robots.txt. Note that Scrapy does not apply a Crawl-delay from
+# robots.txt, so if one is ever published, set DOWNLOAD_DELAY to match it.
 ROBOTSTXT_OBEY = True
 
-# Concurrency and throttling settings
-#CONCURRENT_REQUESTS = 16
+# Policy: "Access boundaries"
+# No login, so no cookies or session state are needed or stored.
+COOKIES_ENABLED = False
+
+# Policy: "Request pacing"
+# No more than one active request at a time, across all domains.
+CONCURRENT_REQUESTS = 1
 CONCURRENT_REQUESTS_PER_DOMAIN = 1
-DOWNLOAD_DELAY = 1
 
-# Disable cookies (enabled by default)
-#COOKIES_ENABLED = False
+# Wait at least one second between consecutive requests.
+DOWNLOAD_DELAY = 1.0
+# Turn off Scrapy's default 0.5x-1.5x randomization so the 1-second minimum
+# always holds.
+RANDOMIZE_DOWNLOAD_DELAY = False
 
-# Disable Telnet Console (enabled by default)
-#TELNETCONSOLE_ENABLED = False
+# Policy: "Request pacing"
+# AutoThrottle may raise the delay when responses slow down, but it never goes
+# below DOWNLOAD_DELAY (1 second). Target concurrency of 1 matches the
+# one-request-at-a-time rule.
+AUTOTHROTTLE_ENABLED = True
+AUTOTHROTTLE_START_DELAY = 1.0
+AUTOTHROTTLE_MAX_DELAY = 10.0
+AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
 
-# Override the default request headers:
-#DEFAULT_REQUEST_HEADERS = {
-#    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-#    "Accept-Language": "en",
-#}
+# A request that hangs should not stall the one-at-a-time crawl.
+DOWNLOAD_TIMEOUT = 30
 
-# Enable or disable spider middlewares
-# See https://docs.scrapy.org/en/latest/topics/spider-middleware.html
-#SPIDER_MIDDLEWARES = {
-#    "auctions.middlewares.AuctionsSpiderMiddleware": 543,
-#}
+# Policy: "Retries and stopping behavior"
+# Retry connection failures, timeouts, and 500/502/503/504 responses at most
+# once. 400, 401, 403, 404, and 429 are deliberately not retried.
+RETRY_ENABLED = True
+RETRY_TIMES = 1
+RETRY_HTTP_CODES = [500, 502, 503, 504]
 
-# Enable or disable downloader middlewares
-# See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
-#DOWNLOADER_MIDDLEWARES = {
-#    "auctions.middlewares.AuctionsDownloaderMiddleware": 543,
-#}
+# Policy: "Access boundaries" ("Avoid repeated API calls")
+# The HTTP cache stays off for real collection runs. Every response is saved
+# once as raw JSON so the same request is never needed again.
+HTTPCACHE_ENABLED = False 
 
-# Enable or disable extensions
-# See https://docs.scrapy.org/en/latest/topics/extensions.html
-#EXTENSIONS = {
-#    "scrapy.extensions.telnet.TelnetConsole": None,
-#}
-
-# Configure item pipelines
-# See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-#ITEM_PIPELINES = {
-#    "auctions.pipelines.AuctionsPipeline": 300,
-#}
-
-# Enable and configure the AutoThrottle extension (disabled by default)
-# See https://docs.scrapy.org/en/latest/topics/autothrottle.html
-#AUTOTHROTTLE_ENABLED = True
-# The initial download delay
-#AUTOTHROTTLE_START_DELAY = 5
-# The maximum download delay to be set in case of high latencies
-#AUTOTHROTTLE_MAX_DELAY = 60
-# The average number of requests Scrapy should be sending in parallel to
-# each remote server
-#AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
-# Enable showing throttling stats for every response received:
-#AUTOTHROTTLE_DEBUG = False
-
-# Enable and configure HTTP caching (disabled by default)
-# See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html#httpcache-middleware-settings
-#HTTPCACHE_ENABLED = True
-#HTTPCACHE_EXPIRATION_SECS = 0
-#HTTPCACHE_DIR = "httpcache"
-#HTTPCACHE_IGNORE_HTTP_CODES = []
-#HTTPCACHE_STORAGE = "scrapy.extensions.httpcache.FilesystemCacheStorage"
+# Policy: "Identification and records" (logs of requests, status codes,
+# retry counts, start and stop times, reasons for interrupted runs)
+# Set LOG_FILE and JOBDIR per run, for example:
+#   -s LOG_FILE=logs/henderson_run1.log -s JOBDIR=crawls/henderson_run1
+LOG_LEVEL = "INFO"
 
 # Set settings whose default value is deprecated to a future-proof value
 FEED_EXPORT_ENCODING = "utf-8"

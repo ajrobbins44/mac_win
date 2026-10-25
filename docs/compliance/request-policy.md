@@ -15,22 +15,20 @@ Defines the measures taken when sending requests to the MAC.BID API to ensure th
 - Avoid repeated API calls as much as possible.
 - Do not use any tools, like proxy rotation, meant to evade measures like rate limits.
 
-## Request pacing
+### Request pacing
 - Permit no more than one active request to MAC.BID at a time.
 - Wait at least one second between consecutive requests.
 - Enable AutoThrottle so delays may increase when response latency rises.
 - AutoThrottle may never reduce the delay below one second.
 
 ### Retries and stopping behavior
-- Do not retry 400, 401, 403, or 404 responses.
-- Permit no more than one retry for connection failures, timeouts,
-  and designated transient server errors.
-- On a 401 or 403 response, stop requests to the affected endpoint
-  and review the access policy before continuing.
-- On a 429 response, honor Retry-After when present and pause collection.
-- If a second 429 occurs during the same run, terminate the run and
-  revise the request rate before restarting.
-- Stop the run if repeated 5xx responses suggest service instability.
+- Retry connection failures, timeouts, and HTTP 500, 502, 503, and 504 responses at most once. 
+- Never retry other error responses (including 400, 401, 403, 404, and 429).
+- Log every error response and failed request.
+- Review the log after each collection run. After any 401, 403, or 429 response, do not start another run until I have reviewed the cause (and waited at least the Retry-After time, for a 429).
+- Stop collecting if errors repeat, or if MAC.BID asks me to stop.
+- Apply the normal one-second delay to retries.
+
 
 ### Collection scope
 - Collect data from only the Henderson and North Las Vegas locations.
