@@ -21,7 +21,7 @@ STAGING_DATABASE_PATH = Path(
     PROJECT_ROOT,
     "data",
     "staging",
-    "macbid_staging_test.sqlite3"
+    "macbid_staging_test.sqlite"
 )
 
 SCRAPER_VERSION = "1.0.0"
@@ -36,6 +36,22 @@ NEWSPIDER_MODULE = "macbid_scraper.spiders"
 
 ADDONS = {}
 
+# Persist scheduler state frequently so an interrupted crawl
+# loses as little progress as possible.
+JOBDIR_SYNC_EVERY = 1
+
+# SQLite-backed queues are more resistant to corruption
+# from an unclean shutdown than the default file queues.
+SCHEDULER_DISK_QUEUE = (
+    "scrapy.squeues.PickleLifoSQLiteQueue"
+)
+
+SCHEDULER_START_DISK_QUEUE = (
+    "scrapy.squeues.PickleFifoSQLiteQueue"
+)
+
+# Report requests that cannot be saved in JOBDIR.
+SCHEDULER_DEBUG = True
 
 # Policy: "Identification and records"
 # Descriptive User-Agent stating the project purpose and a contact email.
@@ -59,7 +75,7 @@ CONCURRENT_REQUESTS_PER_DOMAIN = 1
 DOWNLOAD_DELAY = 1.0
 # Turn off Scrapy's default 0.5x-1.5x randomization so the 1-second minimum
 # always holds.
-RANDOMIZE_DOWNLOAD_DELAY = False
+DOWNLOAD_DELAY_JITTER = 0.0
 
 # Policy: "Request pacing"
 # AutoThrottle may raise the delay when responses slow down, but it never goes
@@ -81,9 +97,23 @@ RETRY_TIMES = 1
 RETRY_HTTP_CODES = [500, 502, 503, 504]
 
 # Policy: "Access boundaries" ("Avoid repeated API calls")
-# The HTTP cache stays off for real collection runs. Every response is saved
-# once as raw JSON so the same request is never needed again.
+# Disable Scrapy's HTTP cache so complete response bodies are not
+# retained outside the selected fields written to staging.
+#
+# JOBDIR preserves unfinished crawl state, while the staging database
+# allows downstream processing without fetching collected records again.
 HTTPCACHE_ENABLED = False 
+
+# Policy: "Access boundaries"
+# Disable Scrapy's proxy middleware completely.
+HTTPPROXY_ENABLED = False
+
+# Policy: "Access boundaries"
+# Disable middleware capable of adding HTTP authentication credentials.
+DOWNLOADER_MIDDLEWARES = {
+    "scrapy.downloadermiddlewares.httpauth.HttpAuthMiddleware": None,
+    "scrapy.downloadermiddlewares.uriuserinfo.UriUserInfoMiddleware": None,
+}
 
 # Policy: "Identification and records" (logs of requests, status codes,
 # retry counts, start and stop times, reasons for interrupted runs)
