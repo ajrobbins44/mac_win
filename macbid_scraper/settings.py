@@ -36,12 +36,10 @@ NEWSPIDER_MODULE = "macbid_scraper.spiders"
 
 ADDONS = {}
 
-# Persist scheduler state frequently so an interrupted crawl
-# loses as little progress as possible.
-JOBDIR_SYNC_EVERY = 1
-
-# SQLite-backed queues are more resistant to corruption
-# from an unclean shutdown than the default file queues.
+# When JOBDIR is supplied for a crawl, persist pending requests in
+# SQLite-backed queues. These queues improve resilience to unexpected
+# termination, while normal pause/resume still depends on allowing
+# Scrapy to shut down cleanly.
 SCHEDULER_DISK_QUEUE = (
     "scrapy.squeues.PickleLifoSQLiteQueue"
 )
@@ -112,7 +110,6 @@ HTTPPROXY_ENABLED = False
 # Disable middleware capable of adding HTTP authentication credentials.
 DOWNLOADER_MIDDLEWARES = {
     "scrapy.downloadermiddlewares.httpauth.HttpAuthMiddleware": None,
-    "scrapy.downloadermiddlewares.uriuserinfo.UriUserInfoMiddleware": None,
 }
 
 # Policy: "Identification and records" (logs of requests, status codes,

@@ -3,6 +3,7 @@ import logging
 from datetime import date
 from types import SimpleNamespace
 from sqlalchemy import func, select
+from scrapy.settings import Settings
 
 from database.connection import (
     create_staging_engine,
@@ -23,21 +24,69 @@ from macbid_scraper.items import (
     LotSummaryItem,
     SingleBidItem,
 )
-
 from macbid_scraper.pipelines import (
     StagingSQLitePipeline,
+)
+from macbid_scraper.spiders.macbid_incremental import (
+    MacbidIncrementalSpider,
 )
 
 class FakeStats:
     """Provide a simple stats object for testing."""
 
-    def get_value(self, key):
-        if key == "finish_reason":
-            return "finished"
+    def __init__(self):
+        self.values: dict[str, object] = {
+            "finish_reason": "finished"
+        }
 
-        return None
+    def get_value(
+        self,
+        key: str,
+        default=None,
+    ):
+        return self.values.get(key, default)
+
+    def set_value(
+        self,
+        key: str,
+        value: object,
+    ):
+        self.values[key] = value
+
+    def inc_value(
+        self,
+        key: str,
+        count: int = 1,
+    ):
+        current_value = self.values.get(key, 0)
+        if not isinstance(current_value, int):
+            current_value = 0
+        self.values[key] = current_value + count
+    
 
 def make_fake_spider():
+    """Return a simple object that mimics a Scrapy 
+    spider for testing.
+    """
+
+    # The minimum configuration needed by the pipeline
+    # methods being tested.
+    test_settings = Settings(
+        {
+            "ROBOTSTXT_OBEY": True,
+            "USER_AGENT": "MacWin test crawler",
+            "CONCURRENT_REQUESTS_PER_DOMAIN": 1,
+            "DOWNLOAD_DELAY": 1.0,
+            "AUTOTHROTTLE_ENABLED": True,
+            "AUTOTHROTTLE_START_DELAY": 1.0,
+            "AUTOTHROTTLE_MAX_DELAY": 10.0,
+            "RETRY_ENABLED": True,
+            "RETRY_TIMES": 1,
+            "HTTPCACHE_ENABLED": False,
+            "HTTPPROXY_ENABLED": False,
+            "JOBDIR": None,
+        }
+    )
 
     # Use a basic object to make the fake spider
     return SimpleNamespace(
@@ -51,7 +100,8 @@ def make_fake_spider():
 
         # A simple imitation of a spider's crawler and stats attributes
         crawler=SimpleNamespace(
-            stats=FakeStats()
+            stats=FakeStats(),
+            settings=test_settings,
         ),
     )
 
@@ -73,7 +123,7 @@ def test_staging_pipeline_stores_each_item_type(
 ):
     """Confirm that every Item reaches its staging table."""
 
-    db_path = (tmp_path / "test_staging.sqlite3")
+    db_path = (tmp_path / "test_staging.sqlite")
 
     pipeline = StagingSQLitePipeline(
         database_path=db_path,
@@ -369,7 +419,10 @@ def test_staging_pipeline_stores_each_item_type(
             assert returned_item is item
 
     # Mark fake run completed and release its engine
-    pipeline.close_spider(spider)
+    pipeline.on_close_spider(
+        spider=spider,
+        reason="finished",
+    )
 
     # Reopen the database for read-only verification
     verification_engine = create_staging_engine(db_path)
@@ -438,3 +491,30 @@ def test_staging_pipeline_stores_each_item_type(
         }
 
     verification_engine.dispose()
+
+def test_make_auction_page_request():
+    spider = MacbidIncrementalSpider()
+    spider.auction_page_size = 100
+
+    request = spider.make_auction_page_request(
+        auction_number="HEA2602-01-A1",
+        auction_id=71841,
+        page_number=1,
+    )
+
+    assert request.url == (
+        "https://api.macdiscount.com/"
+        "auctions/71841?pg=1&ppg=100"
+    )
+
+    assert request.cb_kwargs == {
+        "auction_number": "HEA2602-01-A1",
+        "auction_id": 71841,
+        "page_number": 1,
+    }
+
+    assert request.callback == (
+        spider.parse_auction_page
+    )
+
+    assert request.errback == spider.handle_error

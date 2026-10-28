@@ -85,7 +85,7 @@ collection_runs = Table(
         nullable=False,
     ),
     Column(
-        "stop_reason",
+        "status_reason",
         Text,
     ),
 )

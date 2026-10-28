@@ -276,8 +276,8 @@ def verify_lot_id(
 
 def main():
 
-    start_date = date(2026, 9, 1)
-    end_date = date(2026, 10, 1)
+    start_date = date(2026, 2, 1)
+    end_date = date(2026, 3, 1)
 
     input_file_name = "pattern_behavior_batches1-3.csv"
 

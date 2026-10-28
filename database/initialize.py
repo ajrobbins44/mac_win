@@ -7,7 +7,7 @@ TEST_DB_PATH = Path(
     PROJECT_ROOT,
     "data",
     "staging",
-    "macbid_staging_test.sqlite3"
+    "macbid_staging_test.sqlite"
 )
 
 def main():

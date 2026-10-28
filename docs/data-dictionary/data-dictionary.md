@@ -89,7 +89,7 @@ One row represents one successful data collection run.
 | `scraper_version` | `TEXT` | Web scraper version used during run |
 | `schema_version` | `TEXT` | Database schema version used during run |
 | `status` | `TEXT` | `running`, `completed`, `stopped`, or `failed` |
-| `stop_reason` | `TEXT` | Reason for interruption (rate limiting, no data found, etc.) |
+| `status_reason` | `TEXT` | Reason for interruption (rate limiting, no data found, etc.) |
 
 ### Table: `endpoint_fetches`
 

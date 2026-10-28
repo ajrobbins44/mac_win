@@ -9,6 +9,8 @@ from itemadapter import ItemAdapter
 from sqlalchemy import update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.engine import Engine
+from scrapy import signals
+from scrapy.exceptions import CloseSpider
 
 from database.connection import(
     create_staging_engine,
@@ -65,11 +67,20 @@ class StagingSQLitePipeline:
     def from_crawler(cls, crawler):
         """Create an instance of the pipeline from a Scrapy crawler."""
 
-        return cls(
+        pipeline = cls(
             database_path = crawler.settings["STAGING_DATABASE_PATH"],
             scraper_version = crawler.settings["SCRAPER_VERSION"],
             schema_version = crawler.settings["STAGING_SCHEMA_VERSION"]
-        )    
+        )   
+
+        # Will be called after Scrapy has determined why the spider closed.
+        crawler.signals.connect(
+            pipeline.on_close_spider,
+            signal=signals.spider_closed
+        )
+
+        return pipeline
+
     
     def require_engine(self) -> Engine:
     
@@ -104,7 +115,7 @@ class StagingSQLitePipeline:
             "schema_version": self.schema_version,
 
             "status": "running",
-            "stop_reason": None,
+            "status_reason": None,
         }
 
         with self.engine.begin() as conn:
@@ -127,12 +138,14 @@ class StagingSQLitePipeline:
             "started collection run: %s", self.collection_run_id
         )
 
+        self.log_request_policy(spider)
+
     def insert_source_record(
             self,
             item,
             table,
             conflict_columns,
-    ):
+    ) -> None:
         """Insert a source record into the staging database."""
 
         # Using ItemAdapter provides a standardized way to access item fields
@@ -238,14 +251,16 @@ class StagingSQLitePipeline:
 
         return item
 
-    def close_spider(self, spider):
-        """Clean up resources when the spider closes."""
+    def on_close_spider(self, 
+        spider,
+        reason: str,
+    ) -> None:
+        """Handle the spider_closed signal to update the collection run status."""
 
-        # Reason could be "finished", "cancelled", "shutdown", or a more specific reason
-        finish_reason = spider.crawler.stats.get_value("finish_reason")
-
-        if finish_reason == "finished":
+        if reason == "finished":
             run_status = "completed"
+        elif reason == "start_error":
+            run_status = "failed"
         else:
             run_status = "stopped"
 
@@ -262,7 +277,7 @@ class StagingSQLitePipeline:
             .values(
                 ended_at_utc=utc_now_text(),
                 status=run_status,
-                stop_reason=finish_reason
+                status_reason=reason
             )
         )
 
@@ -270,5 +285,64 @@ class StagingSQLitePipeline:
         with engine.begin() as conn:
             conn.execute(statement)
 
+        spider.logger.info(
+            "Finalized collection run %s with status: %s, reason: %s",
+            collection_run_id,
+            run_status,
+            reason
+        )
+
         engine.dispose()
         self.engine = None
+
+    def log_request_policy(
+        self,
+        spider,
+    ) -> None:
+        """Log the effective request-policy settings."""
+
+        settings = spider.crawler.settings
+
+        spider.logger.info(
+            "REQUEST_POLICY | "
+            "collection_run_id=%s | "
+            "target_start_date=%s | "
+            "target_end_date=%s | "
+            "target_building_ids=%s | "
+            "robots_obey=%s | "
+            "user_agent=%s | "
+            "concurrency_per_domain=%s | "
+            "download_delay_seconds=%s | "
+            "autothrottle_enabled=%s | "
+            "autothrottle_start_delay=%s | "
+            "autothrottle_max_delay=%s | "
+            "retry_enabled=%s | "
+            "retry_times=%s | "
+            "http_cache_enabled=%s | "
+            "http_proxy_enabled=%s | "
+            "job_directory=%s",
+            self.collection_run_id,
+            spider.start_date.isoformat(),
+            spider.end_date.isoformat(),
+            sorted(spider.target_building_ids),
+            settings.getbool("ROBOTSTXT_OBEY"),
+            settings.get("USER_AGENT"),
+            settings.getint(
+                "CONCURRENT_REQUESTS_PER_DOMAIN"
+            ),
+            settings.getfloat("DOWNLOAD_DELAY"),
+            settings.getbool(
+                "AUTOTHROTTLE_ENABLED"
+            ),
+            settings.getfloat(
+                "AUTOTHROTTLE_START_DELAY"
+            ),
+            settings.getfloat(
+                "AUTOTHROTTLE_MAX_DELAY"
+            ),
+            settings.getbool("RETRY_ENABLED"),
+            settings.getint("RETRY_TIMES"),
+            settings.getbool("HTTPCACHE_ENABLED"),
+            settings.getbool("HTTPPROXY_ENABLED"),
+            settings.get("JOBDIR"),
+        )
