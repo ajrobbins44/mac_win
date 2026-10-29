@@ -417,25 +417,37 @@ staging_lot_details = Table(
         "lot_status_source",
         Text,
     ),
-    
-    # Privacy-minimized free-text derivatives
-    #
-    # The original free-text fields are not retained.
+
+    # Full description provided in lot details listing. May result
+    # in derived columns.
     Column(
-        "has_update",
-        Integer,
+        "description_source",
+        Text,
+        nullable=True,
+    ),
+
+    # Nullable free-text values copied from Endpoint 3 without deriving
+    # processed flags during collection. Derived columns created before
+    # saving to processed database.
+    Column(
+        "update_text_source",
+        Text,
+        nullable=True,
     ),
     Column(
-        "has_partial_note",
-        Integer,
+        "partial_note_source",
+        Text,
+        nullable=True,
     ),
     Column(
-        "has_tested_note",
-        Integer,
+        "tested_note_source",
+        Text,
+        nullable=True,
     ),
     Column(
-        "has_damage_note",
-        Integer,
+        "damaged_note_source",
+        Text,
+        nullable=True,
     ),
 
     # Privacy-minimized image derivatives

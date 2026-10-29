@@ -301,11 +301,15 @@ class LotDetailItem(CollectedRecordItem):
     # but it should not be used as a feature.
     lot_status_source = Field()
 
-    # Derived from free-text fields before those fields are discarded.
-    has_update = Field()
-    has_partial_note = Field()
-    has_tested_note = Field()
-    has_damage_note = Field()
+    # Description is retained provisionally in staging. It is not 
+    # republished or copied directly into the processed database.
+    description_source = Field()
+
+    # Nullable free-text source fields retained in staging.
+    update_text_source = Field()
+    partial_note_source = Field()
+    tested_note_source = Field()
+    damaged_note_source = Field()
 
     # Derived from image metadata. The URLs and image objects themselves
     # are discarded after these values are calculated.
