@@ -9,8 +9,8 @@ from scrapy.exceptions import CloseSpider
 from scrapy.crawler import Crawler
 from scrapy.settings import Settings
 
-from macbid_scraper.spiders.macbid_incremental import (
-    MacbidIncrementalSpider,
+from macbid_scraper.spiders.macbid_historical_auctions import (
+    MacbidHistoricalAuctionsSpider,
 )
 
 class FakeStats:
@@ -79,7 +79,7 @@ def make_test_spider():
         crawler_double,
     )
 
-    return MacbidIncrementalSpider.from_crawler(
+    return MacbidHistoricalAuctionsSpider.from_crawler(
         crawler
     )
 
@@ -218,31 +218,31 @@ def test_build_lot_detail_item(
         "Minor cosmetic damage."
 )
 
-    def test_build_lot_detail_without_images(
-        endpoint3_response,
-    ):
-        spider = make_test_spider()
-        response_data = deepcopy(endpoint3_response)
+def test_build_lot_detail_without_images(
+    endpoint3_response,
+):
+    spider = make_test_spider()
+    response_data = deepcopy(endpoint3_response)
 
-        response_data["image_url"] = None
-        response_data["images"] = []
+    response_data["image_url"] = None
+    response_data["images"] = []
 
-        item = spider.build_lot_detail_item(
-            response_data=response_data,
-            expected_auction_number=(
-                "HEA2602-01-A1"
-            ),
-            expected_auction_id=71841,
-            expected_lot_number="2054M",
-            expected_lot_id=49027749,
-            response_collected_at_utc=(
-                "2026-10-28T20:00:00.000Z"
-            ),
-        )
+    item = spider.build_lot_detail_item(
+        response_data=response_data,
+        expected_auction_number=(
+            "HEA2602-01-A1"
+        ),
+        expected_auction_id=71841,
+        expected_lot_number="2054M",
+        expected_lot_id=49027749,
+        response_collected_at_utc=(
+            "2026-10-28T20:00:00.000Z"
+        ),
+    )
 
-        assert item["has_primary_image"] == 0
-        assert item["detail_image_count"] == 0
-        assert item["total_observed_image_count"] == 0
+    assert item["has_primary_image"] == 0
+    assert item["detail_image_count"] == 0
+    assert item["total_observed_image_count"] == 0
 
 @pytest.mark.parametrize(
     (

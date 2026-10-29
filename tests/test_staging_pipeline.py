@@ -1,9 +1,4 @@
-import logging
-
-from datetime import date
-from types import SimpleNamespace
 from sqlalchemy import func, select
-from scrapy.settings import Settings
 
 from database.connection import (
     create_staging_engine,
@@ -22,88 +17,12 @@ from macbid_scraper.items import (
     LotBidHistoryItem,
     LotDetailItem,
     LotSummaryItem,
-    SingleBidItem,
+    BidEventItem,
 )
 from macbid_scraper.pipelines import (
     StagingSQLitePipeline,
 )
-from macbid_scraper.spiders.macbid_incremental import (
-    MacbidIncrementalSpider,
-)
 
-class FakeStats:
-    """Provide a simple stats object for testing."""
-
-    def __init__(self):
-        self.values: dict[str, object] = {
-            "finish_reason": "finished"
-        }
-
-    def get_value(
-        self,
-        key: str,
-        default=None,
-    ):
-        return self.values.get(key, default)
-
-    def set_value(
-        self,
-        key: str,
-        value: object,
-    ):
-        self.values[key] = value
-
-    def inc_value(
-        self,
-        key: str,
-        count: int = 1,
-    ):
-        current_value = self.values.get(key, 0)
-        if not isinstance(current_value, int):
-            current_value = 0
-        self.values[key] = current_value + count
-    
-
-def make_fake_spider():
-    """Return a simple object that mimics a Scrapy 
-    spider for testing.
-    """
-
-    # The minimum configuration needed by the pipeline
-    # methods being tested.
-    test_settings = Settings(
-        {
-            "ROBOTSTXT_OBEY": True,
-            "USER_AGENT": "MacWin test crawler",
-            "CONCURRENT_REQUESTS_PER_DOMAIN": 1,
-            "DOWNLOAD_DELAY": 1.0,
-            "AUTOTHROTTLE_ENABLED": True,
-            "AUTOTHROTTLE_START_DELAY": 1.0,
-            "AUTOTHROTTLE_MAX_DELAY": 10.0,
-            "RETRY_ENABLED": True,
-            "RETRY_TIMES": 1,
-            "HTTPCACHE_ENABLED": False,
-            "HTTPPROXY_ENABLED": False,
-            "JOBDIR": None,
-        }
-    )
-
-    # Use a basic object to make the fake spider
-    return SimpleNamespace(
-        start_date=date(2026, 2, 1),
-        end_date=date(2026, 2, 1),
-        target_building_ids={24},
-
-        logger=logging.getLogger(
-            "staging-pipeline-test"
-        ),
-
-        # A simple imitation of a spider's crawler and stats attributes
-        crawler=SimpleNamespace(
-            stats=FakeStats(),
-            settings=test_settings,
-        ),
-    )
 
 def count_rows(connection, table) -> int:
 
@@ -120,6 +39,7 @@ def count_rows(connection, table) -> int:
 
 def test_staging_pipeline_stores_each_item_type(
     tmp_path,
+    pipeline_spider
 ):
     """Confirm that every Item reaches its staging table."""
 
@@ -131,7 +51,7 @@ def test_staging_pipeline_stores_each_item_type(
         schema_version="test",
     )
 
-    spider = make_fake_spider()
+    spider = pipeline_spider
     pipeline.open_spider(spider)
 
     collected_at = (
@@ -365,7 +285,7 @@ def test_staging_pipeline_stores_each_item_type(
     ]
 
     bid_items = [
-        SingleBidItem(
+        BidEventItem(
             response_collected_at_utc=collected_at,
             bid_key="49027749:1",
             lot_id=49027749,
@@ -376,9 +296,9 @@ def test_staging_pipeline_stores_each_item_type(
             lot_end_time_source="2026-02-02T05:23:38.000Z",
             is_matched_proxy=0,
             bid_type="manual",
-            cumulative_unique_bidder_count=1,
+            total_unique_bidder_count=1,
         ),
-        SingleBidItem(
+        BidEventItem(
             response_collected_at_utc=collected_at,
             bid_key="62499568:1",
             lot_id=62499568,
@@ -389,9 +309,9 @@ def test_staging_pipeline_stores_each_item_type(
             lot_end_time_source="2026-09-02T02:57:39.000Z",
             is_matched_proxy=0,
             bid_type="manual",
-            cumulative_unique_bidder_count=1,
+            total_unique_bidder_count=1,
         ),
-        SingleBidItem(
+        BidEventItem(
             response_collected_at_utc=collected_at,
             bid_key="62499568:2",
             lot_id=62499568,
@@ -402,7 +322,7 @@ def test_staging_pipeline_stores_each_item_type(
             lot_end_time_source="2026-09-02T02:57:39.000Z",
             is_matched_proxy=0,
             bid_type="manual",
-            cumulative_unique_bidder_count=2,
+            total_unique_bidder_count=2,
         ),
     ]
 
@@ -497,30 +417,3 @@ def test_staging_pipeline_stores_each_item_type(
         }
 
     verification_engine.dispose()
-
-def test_make_auction_page_request():
-    spider = MacbidIncrementalSpider()
-    spider.auction_page_size = 100
-
-    request = spider.make_auction_page_request(
-        auction_number="HEA2602-01-A1",
-        auction_id=71841,
-        page_number=1,
-    )
-
-    assert request.url == (
-        "https://api.macdiscount.com/"
-        "auctions/71841?pg=1&ppg=100"
-    )
-
-    assert request.cb_kwargs == {
-        "auction_number": "HEA2602-01-A1",
-        "auction_id": 71841,
-        "page_number": 1,
-    }
-
-    assert request.callback == (
-        spider.parse_auction_page
-    )
-
-    assert request.errback == spider.handle_error
