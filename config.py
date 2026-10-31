@@ -24,3 +24,10 @@ PROJECT_USER_AGENT = (
     "(BYU-Idaho senior project: bid-prediction research; "
     f"contact: {CONTACT_EMAIL})"
 )
+
+STAGING_DATABASE_PATH = Path(
+    PROJECT_ROOT,
+    "data",
+    "staging",
+    "macbid_staging_jan.sqlite"
+)

@@ -666,7 +666,7 @@ staging_bid_events = Table(
     # Calculated transiently using anonId. The source bidder label is
     # discarded before the Item reaches persistent storage.
     Column(
-        "cumulative_unique_bidder_count",
+        "total_unique_bidder_count",
         Integer,
     ),
 

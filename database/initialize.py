@@ -1,23 +1,16 @@
 from pathlib import Path
 from sqlalchemy import inspect
 from .connection import create_staging_engine
-from config import PROJECT_ROOT
-
-TEST_DB_PATH = Path(
-    PROJECT_ROOT,
-    "data",
-    "staging",
-    "macbid_staging_test.sqlite"
-)
+from config import STAGING_DATABASE_PATH
 
 def main():
-    engine = create_staging_engine(TEST_DB_PATH)
+    engine = create_staging_engine(STAGING_DATABASE_PATH)
 
     inspector = inspect(engine)
 
     table_names = sorted(inspector.get_table_names())
 
-    print(f"Staging database: {TEST_DB_PATH}")
+    print(f"Staging database: {STAGING_DATABASE_PATH}")
     print("\nTables created:")
     for name in table_names:
         print(f"  - {name}")

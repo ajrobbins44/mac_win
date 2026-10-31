@@ -16,7 +16,7 @@ from macbid_scraper.items import (
     LotSummaryItem, 
     LotDetailItem, 
     LotBidHistoryItem, 
-    SingleBidItem
+    BidEventItem
 )
 
 from scripts.generate_auction_candidates import (
@@ -44,29 +44,27 @@ def current_utc_timestamp() -> str:
         .replace("+00:00", "Z")
     )
 
-class MacbidIncrementalSpider(Spider):
-    """Collect one known auction through Endpoint 1."""
+class MacbidHistoricalAuctionsSpider(Spider):
+    """Collect historical MAC.BID auctions, lots, and bid events."""
 
-    name = "macbid_incremental"
+    name = "macbid_historical_auctions"
 
     allowed_domains = [
         BASE_URL.replace("https://", "")
     ]
 
-    # Using a controlled, one-day scope
-    start_date = date(2026, 2, 1)
-    end_date = date(2026, 2, 1)
+    # Collectingly data 1 month at a time for starters
+    start_date = date(2026, 1, 1)
+    end_date = date(2026, 1, 31)
 
     # Henderson building only
     target_building_ids = {24}
 
-    # Keep controlled crawl limited to 10 candidates
-    candidate_limit = 1
-
     # Yield 100 lots per auction page
     auction_page_size = 100
+
     # Ensures an infinite loop doesn't occur 
-    max_pages_per_auction = 100
+    max_pages_per_auction = 50
 
     # ---------------------------------------------------------
     # START
@@ -81,9 +79,7 @@ class MacbidIncrementalSpider(Spider):
             target_building_ids=self.target_building_ids,
         )
 
-        limited_candidates = islice(candidates, self.candidate_limit)
-
-        for candidate in limited_candidates:
+        for candidate in candidates:
 
             auction_number = candidate["auction_number"]
             encoded_auction_number = quote(auction_number, safe="")
@@ -362,15 +358,26 @@ class MacbidIncrementalSpider(Spider):
     # HANDLE_ERROR
     # ---------------------------------------------------------
     def handle_error(
-        self,
-        failure: Failure,
-    ) -> None:
-        """Handle a failed Endpoint 1 or Endpoint 2 request."""
+    self,
+    failure: Failure,
+) -> None:
+        """Stop collection after a final request failure.
 
-        # First recover the Scrapy Request that failed
+        This errback handles failed requests from Endpoints 1–4.
+        Eligible retryable failures reach this method only after
+        Scrapy's retry middleware exhausts the configured retries.
+
+        Expected Endpoint 1 candidate 404 responses are handled by
+        parse_candidate() and do not reach this method.
+        """
+
+        # ---------------------------------------------------------
+        # Recover the originating Scrapy Request
+        # ---------------------------------------------------------
+
         request = getattr(
-            failure, 
-            "request", 
+            failure,
+            "request",
             None,
         )
 
@@ -380,51 +387,104 @@ class MacbidIncrementalSpider(Spider):
             )
 
             self.logger.error(
-                "A request failure did not contain "
-                "its originating Scrapy Request: %s",
-                failure.getErrorMessage(),
+                "Request failure did not contain its "
+                "originating Scrapy Request | "
+                f"error={failure.getErrorMessage()}"
             )
 
             raise CloseSpider(
                 reason="failure_without_request"
             )
 
-        # Determine which endpoint produced the failure and 
-        # log its auction information.
+        # ---------------------------------------------------------
+        # Identify the endpoint explicitly from Request.meta
+        # ---------------------------------------------------------
+
+        endpoint_name_value = request.meta.get(
+            "endpoint_name"
+        )
+
+        if (
+            not isinstance(endpoint_name_value, str)
+            or not endpoint_name_value
+        ):
+            self.crawler.stats.inc_value(
+                "macbid/failures_without_endpoint_names"
+            )
+
+            self.logger.error(
+                "Failed request did not contain an endpoint name | "
+                f"url={request.url} | "
+                f"error={failure.getErrorMessage()}"
+            )
+
+            raise CloseSpider(
+                reason="failure_without_endpoint_name"
+            )
+
+        endpoint_name = endpoint_name_value
+
+        # ---------------------------------------------------------
+        # Recover identifiers from the endpoint's callback arguments
+        # ---------------------------------------------------------
 
         callback_arguments = request.cb_kwargs
+
         candidate = callback_arguments.get(
             "candidate"
         )
 
+        auction_number = None
+        auction_id = None
+        page_number = None
+        lot_number = None
+        lot_id = None
+
+        # Endpoint 1 stores auction information in candidate.
         if isinstance(candidate, dict):
-
-            endpoint_name = "ep1_auction_lookup"
-
-            auction_number_value = candidate.get(
+            auction_number = candidate.get(
                 "auction_number"
             )
 
-            page_number = None
-
-        else:
-            # Endpoint 2 requests do not have a candidate dict, 
-            # but they do have auction_number and page_number.
-            endpoint_name = "ep2_auction_page"
-
-            auction_number_value = callback_arguments.get(
+        # Endpoint 2 uses unprefixed callback argument names.
+        if auction_number is None:
+            auction_number = callback_arguments.get(
                 "auction_number"
             )
-            page_number = callback_arguments.get(
-                "page_number"
+
+        auction_id = callback_arguments.get(
+            "auction_id"
+        )
+
+        page_number = callback_arguments.get(
+            "page_number"
+        )
+
+        # Endpoint 3 uses expected_* argument names because the
+        # callback compares returned identifiers against them.
+        if auction_number is None:
+            auction_number = callback_arguments.get(
+                "expected_auction_number"
             )
 
-        if isinstance(auction_number_value, str):
-            auction_number = auction_number_value
-        else:
-            auction_number = "unknown"
+        if auction_id is None:
+            auction_id = callback_arguments.get(
+                "expected_auction_id"
+            )
 
-        # Handle an HTTP response that Scrapy rejected
+        lot_number = callback_arguments.get(
+            "expected_lot_number"
+        )
+
+        # Both Endpoint 3 and Endpoint 4 carry expected_lot_id.
+        lot_id = callback_arguments.get(
+            "expected_lot_id"
+        )
+
+        # ---------------------------------------------------------
+        # Handle HTTP failures
+        # ---------------------------------------------------------
+
         if failure.check(HttpError):
             http_error = failure.value
 
@@ -434,14 +494,15 @@ class MacbidIncrementalSpider(Spider):
                 )
 
                 self.logger.error(
-                    "Failure was identified as an HttpError "
-                    "but did not contain an HttpError value | "
-                    f"endpoint={endpoint_name} | url={request.url}"
+                    "Failure was classified as HttpError but "
+                    "did not contain an HttpError value | "
+                    f"endpoint={endpoint_name} | "
+                    f"url={request.url}"
                 )
 
                 raise CloseSpider(
                     reason="invalid_http_failure"
-                )   
+                )
 
             response = http_error.response
             http_status = response.status
@@ -450,33 +511,65 @@ class MacbidIncrementalSpider(Spider):
                 f"macbid/http_status_{http_status}"
             )
 
+            self.crawler.stats.inc_value(
+                f"macbid/{endpoint_name}_http_failures"
+            )
+
             self.logger.error(
                 "HTTP request failed | "
-                f"endpoint={endpoint_name} | status={http_status} | "
-                f"auction_number={auction_number} | page={page_number} | "
+                f"endpoint={endpoint_name} | "
+                f"status={http_status} | "
+                f"auction_number={auction_number!r} | "
+                f"auction_id={auction_id!r} | "
+                f"page_number={page_number!r} | "
+                f"lot_number={lot_number!r} | "
+                f"lot_id={lot_id!r} | "
                 f"url={request.url}"
             )
 
+            # These statuses have special significance under the
+            # documented request policy.
             if http_status in {403, 429}:
                 raise CloseSpider(
                     reason=f"http_{http_status}"
                 )
 
             raise CloseSpider(
-                reason=f"{endpoint_name}_http_{http_status}"
+                reason=(
+                    f"{endpoint_name}_http_{http_status}"
+                )
             )
 
-        # Handle a non-HTTP failure, such as a timeout or connection error
+        # ---------------------------------------------------------
+        # Handle non-HTTP failures
+        # ---------------------------------------------------------
+
+        # Examples include an exhausted timeout, DNS failure,
+        # connection failure, or TLS/network problem.
         self.crawler.stats.inc_value(
             "macbid/request_failures"
         )
 
+        self.crawler.stats.inc_value(
+            f"macbid/{endpoint_name}_request_failures"
+        )
+
         self.logger.error(
-            "request failed without an HTTP response | "
+            "Request failed without an HTTP response | "
             f"endpoint={endpoint_name} | "
-            f"auction_number={auction_number} | "
+            f"auction_number={auction_number!r} | "
+            f"auction_id={auction_id!r} | "
             f"page_number={page_number!r} | "
-            f"url={request.url}"
+            f"lot_number={lot_number!r} | "
+            f"lot_id={lot_id!r} | "
+            f"url={request.url} | "
+            f"error={failure.getErrorMessage()}"
+        )
+
+        raise CloseSpider(
+            reason=(
+                f"{endpoint_name}_request_failure"
+            )
         )
 
     # ---------------------------------------------------------
@@ -638,11 +731,6 @@ class MacbidIncrementalSpider(Spider):
                 lot_summary_item["lot_number"],
             )
 
-            # Schedule Endpoint 3 for this lot.
-            self.crawler.stats.inc_value(
-                "macbid/lot_detail_requests_scheduled"
-            )
-
             """
             self.logger.info(
                 "Lot-detail request scheduled | "
@@ -655,13 +743,25 @@ class MacbidIncrementalSpider(Spider):
             )
             """
 
+            # Schedule Endpoint 3 for this lot.
+            self.crawler.stats.inc_value(
+                "macbid/lot_detail_requests_scheduled"
+            )
+
             yield self.make_lot_detail_request(
                 auction_number=auction_number,
                 auction_id=auction_id,
                 lot_number=lot_number,
                 lot_id=lot_id,
             )
-                    
+
+            self.crawler.stats.inc_value(
+                "macbid/bid_history_requests_scheduled"
+            )  
+
+            yield self.make_bid_history_request(
+                lot_id=lot_id,
+            )
 
         """
         self.logger.info(
@@ -712,6 +812,7 @@ class MacbidIncrementalSpider(Spider):
             auction_id=auction_id,
             page_number=next_page_number,
         ) 
+        
 
     # ---------------------------------------------------------
     # BUILD_LOT_SUMMARY_ITEM
@@ -1383,3 +1484,287 @@ class MacbidIncrementalSpider(Spider):
         """
 
         yield lot_detail_item
+
+    # ---------------------------------------------------------
+    # MAKE_BID_HISTORY_REQUEST
+    # ---------------------------------------------------------
+    def make_bid_history_request(
+        self,
+        *,
+        lot_id: int,
+    ) -> Request:
+        """Return an Endpoint 4 request for one lot's bid history."""
+
+        request_url = (
+            f"{BASE_URL}/auctions/lot/"
+            f"{lot_id}/bid-history"
+        )
+
+        return Request(
+            url=request_url,
+            method="GET",
+            callback=self.parse_bid_history,
+            errback=self.handle_error,
+            cb_kwargs={
+                "expected_lot_id": lot_id,
+            },
+        )
+
+    # ---------------------------------------------------------
+    # PARSE_BID_HISTORY
+    # ---------------------------------------------------------
+    def parse_bid_history(
+        self,
+        response: Response,
+        expected_lot_id: int,
+    ):
+        response_data = (
+            self.require_successful_json_object(
+                response,
+                endpoint_name="ep4_bid_history",
+            )
+        )
+
+        collected_at = current_utc_timestamp()
+
+        history_item, bid_items = (
+            self.build_bid_history_items(
+                response_data=response_data,
+                expected_lot_id=expected_lot_id,
+                response_collected_at_utc=collected_at
+            )
+        )
+
+        yield history_item
+        yield from bid_items
+
+    # ---------------------------------------------------------
+    # BUILD_BID_HISTORY_ITEMS
+    # ---------------------------------------------------------
+    def build_bid_history_items(
+        self,
+        *,
+        response_data: dict[str, Any],
+        expected_lot_id: int,
+        response_collected_at_utc: str,
+    )-> tuple[
+        LotBidHistoryItem,
+        list[BidEventItem]
+    ]:
+        """Build staging items from one Endpoint 4 response.
+
+        Returns one LotBidHistoryItem for the lot and one
+        BidEventItem for every observed bid event.
+
+        Source anonId values are used temporarily to calculate
+        total_unique_bidder_count, but they are not retained.
+        """
+        bids = response_data.get("bids")
+
+        # ---------------------------------------------------------
+        # Validate the top-level bids array
+        # ---------------------------------------------------------
+        if not isinstance(bids, list):
+            self.crawler.stats.inc_value(
+                "macbid/bid_history_invalid_bid_lists"
+            )
+
+            self.logger.error(
+                "Missing or invalid bid list | "
+                f"lot_id={expected_lot_id} | "
+                f"returned_bids={bids!r}"
+            )
+
+            raise CloseSpider(
+                reason="ep4_bid_history_invalid_bid_list"
+            )
+
+        # ---------------------------------------------------------
+        # Validate each bids[] object
+        # ---------------------------------------------------------
+
+        # Assigned values like "Bidder 1", "Bidder 2", etc.
+        seen_anon_ids: set[str] = set()
+
+        validated_bids: list[dict[str, Any]] = []
+
+        for source_position, bid_data in enumerate(
+            bids,
+            start=1
+        ):
+            if not isinstance(bid_data, dict):
+                self.logger.error(
+                    "Invalid Endpoint 4 bid object | "
+                    f"expected_lot_id={expected_lot_id} | "
+                    f"source_position={source_position} | "
+                    f"returned_bid={bid_data!r}"
+                )
+
+                raise CloseSpider(
+                    reason=(
+                        "ep4_bid_history_invalid_bid_object"
+                    )
+                )
+
+            returned_lot_id = bid_data.get("lot_id")
+
+            
+            if type(returned_lot_id) is not int:
+                self.crawler.stats.inc_value(
+                    "macbid/bid_history_invalid_lot_ids"
+                )
+
+                self.logger.error(
+                    "Missing or invalid bid lot ID | "
+                    f"expected_lot_id={expected_lot_id} | "
+                    f"source_position={source_position} | "
+                    f"returned_lot_id={returned_lot_id!r}"
+                )
+
+                raise CloseSpider(
+                    reason=(
+                        "ep4_bid_history_invalid_lot_id"
+                    )
+                )
+
+            if returned_lot_id != expected_lot_id:
+                self.crawler.stats.inc_value(
+                    "macbid/bid_history_lot_id_mismatches"
+                )
+
+                self.logger.error(
+                    "Endpoint 4 lot ID mismatch | "
+                    f"expected_lot_id={expected_lot_id} | "
+                    f"returned_lot_id={returned_lot_id} | "
+                    f"source_position={source_position}"
+                )
+
+                raise CloseSpider(
+                    reason=(
+                        "ep4_bid_history_lot_id_mismatch"
+                    )
+                )
+
+            bid_time = bid_data.get("bid_time")
+
+            if (not isinstance(bid_time, str) or
+                        not bid_time.strip()):
+                
+                self.crawler.stats.inc_value(
+                    "macbid/bid_history_invalid_bid_times"
+                )
+
+                self.logger.error(
+                    "Missing or invalid bid time | "
+                    f"lot_id={expected_lot_id} | "
+                    f"source_position={source_position} | "
+                    f"returned_bid_time={bid_time!r}"
+                )
+
+                raise CloseSpider(
+                    reason=(
+                        "ep4_bid_history_invalid_bid_time"
+                    )
+                )
+
+            anon_id = bid_data.get("anonId")
+
+            if (not isinstance(anon_id, str) or
+                not anon_id.strip()):
+
+                self.crawler.stats.inc_value(
+                    "macbid/bid_history_invalid_anon_ids"
+                )
+
+                self.logger.error(
+                    "Missing or invalid anonymous bidder ID | "
+                    f"lot_id={expected_lot_id} | "
+                    f"source_position={source_position} | "
+                    f"returned_anon_id={anon_id!r}"
+                )
+
+                raise CloseSpider(
+                    reason=(
+                        "ep4_bid_history_invalid_anon_id"
+                    )
+                )
+
+            validated_bids.append(bid_data)
+
+        # ---------------------------------------------------------
+        # Put the bid events into chronological order
+        # ---------------------------------------------------------
+
+        # The API returns newest bids first. UTC timestamps can 
+        # sort the strings chronologically.
+        bids_chronological = sorted(
+            validated_bids,
+            key=lambda bid: cast(
+                str,
+                bid["bid_time"],
+            ),
+        )
+
+        # ---------------------------------------------------------
+        # Build the one-per-lot bid-history summary
+        # ---------------------------------------------------------
+
+        history_item = LotBidHistoryItem(
+            lot_id=expected_lot_id,
+            response_collected_at_utc=response_collected_at_utc,
+            observed_bid_record_count=len(validated_bids),
+        )
+
+        # ---------------------------------------------------------
+        # Build one BidEventItem for every bids[] object
+        # ---------------------------------------------------------
+        
+        bid_items: list[BidEventItem] = []
+        seen_anon_ids: set[str] = set()
+
+        
+        for bid_sequence, bid_data in enumerate(
+            bids_chronological,
+            start=1,
+        ):
+            anon_id = bid_data.get("anonId")
+
+            # anon_id was already validated, so use cast()
+            # to enforce validation as a nonempty string
+            anon_id = cast(
+                str,
+                bid_data["anonId"],
+            )
+            # Only exists temporarily. Not retained in staging.
+            seen_anon_ids.add(anon_id)
+
+            total_unique_bidder_count = len(seen_anon_ids)
+
+            bid_item = BidEventItem(
+                response_collected_at_utc=response_collected_at_utc,
+                bid_key=(
+                    f"{expected_lot_id}:{bid_sequence}"
+                ),
+                lot_id=expected_lot_id,
+                bid_sequence=bid_sequence,
+                bid_amount_source=bid_data.get(
+                    "bid_amount"
+                ),
+                displayed_bid_source=bid_data.get(
+                    "displayedBid"
+                ),
+                bid_time_source=bid_data.get(
+                    "bid_time"
+                ),
+                lot_end_time_source=bid_data.get(
+                    "lot_end_time"
+                ),
+                is_matched_proxy=bid_data.get(
+                    "isMatchedProxy"
+                ),
+                bid_type=bid_data.get("bidType"),
+                total_unique_bidder_count=total_unique_bidder_count,
+            )
+            bid_items.append(bid_item)
+
+        return history_item, bid_items

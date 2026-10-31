@@ -362,13 +362,13 @@ class LotBidHistoryItem(CollectedRecordItem):
     # Compare with total_bids_source from the lot record.
     observed_bid_record_count = Field()
 
-class SingleBidItem(CollectedRecordItem):
+class BidEventItem(CollectedRecordItem):
     """One privacy-minimized bid event collected from Endpoint 4.
 
     Endpoint:
         GET /auctions/lot/{lot_id}/bid-history
 
-    One SingleBidItem is yielded for each object in the response's
+    One BidEventItem is yielded for each object in the response's
     bids[] array. Its fields are stored in staging_bid_events. 
 
     The API does not appear to provide an independent numeric bid-event
@@ -377,10 +377,10 @@ class SingleBidItem(CollectedRecordItem):
 
     The source fields anonId, isCurrentUser, and isCurrentWinner are not
     retained. anonId may be used transiently while processing one
-    response to calculate cumulative_unique_bidder_count, but it must be
+    response to calculate total_unique_bidder_count, but it must be
     discarded before persistence.
 
-    Bid sequence and cumulative state must be calculated in chronological
+    Bid sequence and total state must be calculated in chronological
     order so that each record represents the auction state immediately
     after that bid.
     """
@@ -423,4 +423,4 @@ class SingleBidItem(CollectedRecordItem):
 
     # Derived using anonId only while the response is held in memory.
     # The source bidder label itself must not be persisted.
-    cumulative_unique_bidder_count = Field()
+    total_unique_bidder_count = Field()

@@ -1,87 +1,7 @@
 from copy import deepcopy
-from types import SimpleNamespace
-from unittest.mock import MagicMock
-from typing import cast
-
 import pytest
-
 from scrapy.exceptions import CloseSpider
-from scrapy.crawler import Crawler
-from scrapy.settings import Settings
 
-from macbid_scraper.spiders.macbid_historical_auctions import (
-    MacbidHistoricalAuctionsSpider,
-)
-
-class FakeStats:
-    """Provide a simple stats object for testing."""
-
-    def __init__(self):
-        self.values: dict[str, object] = {
-            "finish_reason": "finished"
-        }
-
-    def get_value(
-        self,
-        key: str,
-        default=None,
-    ):
-        return self.values.get(key, default)
-
-    def set_value(
-        self,
-        key: str,
-        value: object,
-    ):
-        self.values[key] = value
-
-    def inc_value(
-        self,
-        key: str,
-        count: int = 1,
-    ):
-        current_value = self.values.get(key, 0)
-        if not isinstance(current_value, int):
-            current_value = 0
-        self.values[key] = current_value + count
-
-def make_test_spider():
-
-    test_settings = Settings(
-        {
-            "ROBOTSTXT_OBEY": True,
-            "USER_AGENT": "MacWin test crawler",
-            "CONCURRENT_REQUESTS": 1,
-            "CONCURRENT_REQUESTS_PER_DOMAIN": 1,
-            "DOWNLOAD_DELAY": 1.0,
-            "AUTOTHROTTLE_ENABLED": True,
-            "AUTOTHROTTLE_START_DELAY": 1.0,
-            "AUTOTHROTTLE_MAX_DELAY": 10.0,
-            "RETRY_ENABLED": True,
-            "RETRY_TIMES": 1,
-            "HTTPCACHE_ENABLED": False,
-            "HTTPPROXY_ENABLED": False,
-            "JOBDIR": None,
-        }
-    )
-
-    crawler_double = SimpleNamespace(
-        settings=test_settings,
-        stats=FakeStats(),
-
-        # Spider.from_crawler() connects the spider's close
-        # handler to crawler.signals.
-        signals=MagicMock(),
-    )
-
-    crawler = cast(
-        Crawler,
-        crawler_double,
-    )
-
-    return MacbidHistoricalAuctionsSpider.from_crawler(
-        crawler
-    )
 
 @pytest.fixture
 def endpoint3_response():
@@ -152,8 +72,8 @@ def endpoint3_response():
     }
 
 # Test the endpoint 3 request
-def test_make_lot_detail_request():
-    spider = make_test_spider()
+def test_make_lot_detail_request(historical_spider):
+    spider = historical_spider
 
     request = spider.make_lot_detail_request(
         auction_number="HEA2602-01-A1",
@@ -184,8 +104,9 @@ def test_make_lot_detail_request():
 
 def test_build_lot_detail_item(
     endpoint3_response,
+    historical_spider,
 ):
-    spider = make_test_spider()
+    spider = historical_spider
 
     item = spider.build_lot_detail_item(
         response_data=endpoint3_response,
@@ -220,8 +141,9 @@ def test_build_lot_detail_item(
 
 def test_build_lot_detail_without_images(
     endpoint3_response,
+    historical_spider
 ):
-    spider = make_test_spider()
+    spider = historical_spider
     response_data = deepcopy(endpoint3_response)
 
     response_data["image_url"] = None
@@ -274,8 +196,9 @@ def test_build_lot_detail_rejects_mismatches(
     field_name,
     incorrect_value,
     expected_reason,
+    historical_spider,
 ):
-    spider = make_test_spider()
+    spider = historical_spider
     response_data = deepcopy(endpoint3_response)
 
     response_data[field_name] = incorrect_value
@@ -298,8 +221,9 @@ def test_build_lot_detail_rejects_mismatches(
 
 def test_build_lot_detail_rejects_invalid_text(
     endpoint3_response,
+    historical_spider
 ):
-    spider = make_test_spider()
+    spider = historical_spider
     response_data = deepcopy(endpoint3_response)
 
     response_data["description"] = 12345

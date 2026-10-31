@@ -29,8 +29,10 @@ from .items import (
     LotBidHistoryItem,
     LotDetailItem,
     LotSummaryItem,
-    SingleBidItem,
+    BidEventItem,
 )
+
+from config import STAGING_DATABASE_PATH
 
 def utc_now_text() -> str:
     """Return the current UTC time as an ISO format string."""
@@ -234,7 +236,7 @@ class StagingSQLitePipeline:
                 ],
             )
 
-        elif isinstance(item, SingleBidItem):
+        elif isinstance(item, BidEventItem):
             self.insert_source_record(
                 item=item,
                 table=staging_bid_events,

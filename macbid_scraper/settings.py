@@ -7,7 +7,7 @@
 #     https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 from pathlib import Path
-from config import PROJECT_ROOT, PROJECT_USER_AGENT
+from config import PROJECT_USER_AGENT
 
 # -------------------------------------------------------------------
 # Scrapy settings for the MAC.BID research crawler.
@@ -16,13 +16,6 @@ from config import PROJECT_ROOT, PROJECT_USER_AGENT
 # -------------------------------------------------------------------
 
 BOT_NAME = "macbid_scraper"
-
-STAGING_DATABASE_PATH = Path(
-    PROJECT_ROOT,
-    "data",
-    "staging",
-    "macbid_staging_test.sqlite"
-)
 
 SCRAPER_VERSION = "1.0.0"
 STAGING_SCHEMA_VERSION = "1.0.0"
