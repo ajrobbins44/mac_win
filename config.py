@@ -25,9 +25,19 @@ PROJECT_USER_AGENT = (
     f"contact: {CONTACT_EMAIL})"
 )
 
-STAGING_DATABASE_PATH = Path(
-    PROJECT_ROOT,
-    "data",
-    "staging",
-    "macbid_staging_jan.sqlite"
+STAGING_DATABASE_DIRECTORY = Path(
+    "/Volumes/WD_easystore",
+    "macwin_data",
+    "staging"
 )
+
+STAGING_DATABASE_PATHS: dict [
+    int,
+    Path
+] = {
+    month: (
+        STAGING_DATABASE_DIRECTORY
+        / f"macbid_staging_{month:02d}.sqlite"
+    )
+    for month in range(1, 13)
+}

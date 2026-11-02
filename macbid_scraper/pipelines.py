@@ -32,7 +32,8 @@ from .items import (
     BidEventItem,
 )
 
-from config import STAGING_DATABASE_PATH
+from config import STAGING_DATABASE_PATHS
+
 
 def utc_now_text() -> str:
     """Return the current UTC time as an ISO format string."""
@@ -53,15 +54,21 @@ class StagingSQLitePipeline:
 
     def __init__(
         self,
-        database_path: Path,
+        database_paths: dict[int, str | Path],
         scraper_version: str,
         schema_version: str,
     ):
-        self.database_path = database_path
+        self.database_paths = {
+            int(month): Path(path)
+            for month, path
+            in database_paths.items()
+        }
+
         self.scraper_version = scraper_version
         self.schema_version = schema_version
 
         # These values don't exist until open_spider() runs.
+        self.database_path: Path | None = None
         self.engine: Engine | None = None
         self.collection_run_id: int | None = None
     
@@ -69,8 +76,18 @@ class StagingSQLitePipeline:
     def from_crawler(cls, crawler):
         """Create an instance of the pipeline from a Scrapy crawler."""
 
+        database_paths = crawler.settings.get(
+            "STAGING_DATABASE_PATHS"
+        )
+
+        if not isinstance(database_paths, dict):
+            raise RuntimeError(
+                "STAGING_DATABASE_PATHS is"
+                "not assigned a value."
+            )
+        
         pipeline = cls(
-            database_path = crawler.settings["STAGING_DATABASE_PATH"],
+            database_paths = database_paths,
             scraper_version = crawler.settings["SCRAPER_VERSION"],
             schema_version = crawler.settings["STAGING_SCHEMA_VERSION"]
         )   
@@ -103,6 +120,87 @@ class StagingSQLitePipeline:
         return self.collection_run_id
     
     def open_spider(self, spider):
+
+        start_date = spider.start_date
+        end_date = spider.end_date
+
+        # Validate the provided date range
+        if end_date < start_date:
+            raise RuntimeError(
+                "The target end date cannot occur "
+                "before the target start date | "
+                f"start_date={start_date} | "
+                f"end_date={end_date}"
+            )
+
+        start_year_month = (
+            start_date.year,
+            start_date.month,
+        )
+
+        end_year_month = (
+            end_date.year,
+            end_date.month,
+        )
+
+        if start_year_month != end_year_month:
+            raise RuntimeError(
+                "One collection run cannot cross a "
+                "calendar-month boundary | "
+                f"start_date={start_date} | "
+                f"end_date={end_date}"
+            )
+
+        collection_month = (
+        start_date.month
+    )
+
+        database_path = (
+            self.database_paths.get(
+                collection_month
+            )
+        )
+
+        if database_path is None:
+            raise RuntimeError(
+                "No staging database path is "
+                "configured for collection month "
+                f"{collection_month:02d}."
+            )
+
+        database_directory = (
+        database_path.parent
+    )
+
+        if not database_directory.is_dir():
+            raise RuntimeError(
+                "The staging database directory "
+                "does not exist. Confirm that the "
+                "SSD is mounted | "
+                f"directory={database_directory}"
+            )
+
+        # Because the monthly databases are initialized
+        # beforehand, a missing file indicates a setup error.
+        if not database_path.is_file():
+            raise RuntimeError(
+                "The selected staging database has "
+                "not been initialized | "
+                f"database={database_path}"
+            )
+
+        # Retain the selected path for logging and shutdown.
+        self.database_path = database_path
+
+        spider.logger.info(
+            "COLLECTION_TARGET | "
+            f"start_date={start_date} | "
+            f"end_date={end_date} | "
+            f"collection_month="
+            f"{collection_month:02d} | "
+            f"database={database_path}"
+        )
+            
         self.engine = create_staging_engine(self.database_path)
         
         run_values = {

@@ -54,8 +54,8 @@ class MacbidHistoricalAuctionsSpider(Spider):
     ]
 
     # Collectingly data 1 month at a time for starters
-    start_date = date(2026, 1, 1)
-    end_date = date(2026, 1, 31)
+    start_date = date(2026, 2, 1)
+    end_date = date(2026, 2, 28)
 
     # Henderson building only
     target_building_ids = {24}

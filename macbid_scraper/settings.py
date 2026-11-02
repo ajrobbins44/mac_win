@@ -7,7 +7,7 @@
 #     https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 from pathlib import Path
-from config import PROJECT_USER_AGENT
+from config import PROJECT_USER_AGENT, STAGING_DATABASE_PATHS
 
 # -------------------------------------------------------------------
 # Scrapy settings for the MAC.BID research crawler.
