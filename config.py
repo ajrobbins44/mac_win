@@ -26,8 +26,9 @@ PROJECT_USER_AGENT = (
 )
 
 STAGING_DATABASE_DIRECTORY = Path(
-    "/Volumes/WD_easystore",
-    "macwin_data",
+    "/Volumes",
+    "WD_easystore",
+    "macbid_data",
     "staging"
 )
 
