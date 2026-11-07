@@ -85,10 +85,8 @@ def initialize_database(
         # next monthly database.
         engine.dispose()
 
-
-
-def main():
-    """Initialize all the configured monthly databases"""
+def initialize_all_databases():
+    """Initialize all the configured monthly staging databases."""
 
     for month, database_path in sorted(
         STAGING_DATABASE_PATHS.items()
@@ -102,6 +100,30 @@ def main():
         "\nAll monthly staging databases "
         "were initialized successfully."
     )
+
+def initialize_database_for_month(month: int):
+    """Initialize the staging database for a specific month."""
+
+    database_path = STAGING_DATABASE_PATHS[month]
+
+    if not database_path:
+        raise RuntimeError(
+            f"No staging database configured for month {month:02d}."
+        )
+
+    initialize_database(
+        month=month,
+        database_path=database_path,
+    )
+
+    print(
+        f"\nMonth {month:02d} staging database "
+        "initialized successfully."
+    )
+
+def main():
+
+    initialize_all_databases()
 
 if __name__ == "__main__":
     main()
