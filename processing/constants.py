@@ -5,6 +5,7 @@ from config import (
 STAGING_DATABASES = {
     "month_01": STAGING_DATABASE_PATHS[1],
     "month_02": STAGING_DATABASE_PATHS[2],
+    "month_03": STAGING_DATABASE_PATHS[3],
 }
 
 TABLES_TO_AUDIT = (

@@ -25,6 +25,10 @@ from scripts.generate_auction_candidates import (
 
 from config import PROJECT_ROOT, BASE_URL
 
+# Must include start and end dates in the same month
+START_DATE = date(2026, 4, 1)
+END_DATE = date(2026, 4, 30)
+
 PATTERN_FILE = Path(
     PROJECT_ROOT,
     "data",
@@ -53,9 +57,9 @@ class MacbidHistoricalAuctionsSpider(Spider):
         BASE_URL.replace("https://", "")
     ]
 
-    # Collectingly data 1 month at a time for starters
-    start_date = date(2026, 2, 1)
-    end_date = date(2026, 2, 28)
+    # Collectingly data at a maximum of one month at a time.
+    start_date = START_DATE
+    end_date = END_DATE
 
     # Henderson building only
     target_building_ids = {24}

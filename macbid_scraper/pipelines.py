@@ -15,7 +15,9 @@ from scrapy.exceptions import CloseSpider
 from database.connection import(
     create_staging_engine,
 )
-from database.staging_tables import(
+
+
+from database.staging_tables import (
     collection_runs,
     staging_auctions,
     staging_bid_events,
@@ -26,11 +28,12 @@ from database.staging_tables import(
 
 from .items import (
     AuctionRecordItem,
-    LotBidHistoryItem,
-    LotDetailItem,
     LotSummaryItem,
+    LotDetailItem,
+    LotBidHistoryItem,
     BidEventItem,
 )
+
 
 from config import STAGING_DATABASE_PATHS
 
@@ -133,17 +136,10 @@ class StagingSQLitePipeline:
                 f"end_date={end_date}"
             )
 
-        start_year_month = (
-            start_date.year,
-            start_date.month,
-        )
-
-        end_year_month = (
+        if (start_date.year, start_date.month) != (
             end_date.year,
             end_date.month,
-        )
-
-        if start_year_month != end_year_month:
+        ):
             raise RuntimeError(
                 "One collection run cannot cross a "
                 "calendar-month boundary | "
