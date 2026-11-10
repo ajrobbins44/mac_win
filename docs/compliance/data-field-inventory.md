@@ -1,15 +1,17 @@
 # Data Field Inventory
 
-Status: Preliminary
-Based on: Endpoint samples captured 2026-10-16
+Status: Post-collection staging inventory  
+Source evidence: Endpoint samples captured 2026-10-16 and the January–March staging audit
 
 ## Purpose: 
 
-This data field inventory documents the fields observed in responses from the four public, unauthenticated MAC.BID API endpoints used by this project. 
+This inventory records JSON fields observed in samples from the four public, unauthenticated MAC.BID endpoints used by this project. It documents each field's disposition at the API-to-staging boundary. The inventory reflects observed responses and may expand as new response shapes are encountered.
 
-Because it is based on observed API responses rather than an official schema, it will be reviewed after initial data collection and updated when new values, types, or response structures are discovered.
+**Staging disposition.** “Stored in staging” means the source value is represented in staging, possibly under a different column name. “Not stored in staging” means the field is omitted from the staging records. “Expanded” means selected child values are written to staging rows. “Verify staging mapping” marks a documentation gap that requires a check against the existing collector and table definitions. Observed JSON types and sample nulls describe the response sample. SQLite types, nullability, and constraints come from the staging schema.
 
 ### Endpoint 1: Auction lookup by auction number
+
+**Staging destination** — `staging_auctions`.
 
 #### GET `/auctions/{auction_number}?getItems=0`
 
@@ -20,55 +22,57 @@ to be empty. Item records are obtained through endpoint 2: auction items by auct
 
 #### Top-level auction fields
 
-| JSON field | Observed type | Null in sample? | Preliminary decision | Reason or interpretation |
+| JSON field | Observed type | Null or absent in sample? | Staging disposition | Staging note or source interpretation |
 |---|---|---:|---|---|
-| `id` | Integer | No | Retain | Numeric auction ID; required for retrieving auction items. Rename `auction_id` in the retained dataset. |
-| `date_created` | ISO 8601 timestamp | No | Exclude | Indicates when the auction record was created. Only useful as an internal, administrative field. |
-| `auction_number` | String | No | Retain | Human-readable auction identifier and connection to generated candidates. |
-| `opening_date` | ISO 8601 timestamp | No | Derive and discard | Allows calculation of the auction’s scheduled duration. |
-| `closing_date` | ISO 8601 timestamp | No | Derive and discard | Auction closing time and primary temporal reference. |
-| `external_folder_name` | Null; likely string | Yes | Exclude | Appears to be an internal operational field. |
-| `pickup_date` | String | No | Investigate | Human-formatted pickup information, not a complete timestamp. Pickup timing could potentially affect bidding. |
-| `closed_for_entry` | Integer flag | No | QA only | Likely indicates whether new inventory can be added; not necessarily whether bidding is open. |
-| `location_id` | Integer | No | Retain | Location identifier. Keep alongside `building_id` until their meanings are fully established. |
-| `allow_transfers` | Integer flag | No | Retain | Transfer availability might affect which customers can realistically bid. |
-| `abandon_date` | ISO 8601 timestamp | No | Exclude | May indicate the deadline after which uncollected purchases are abandoned. |
-| `auction_mobility_id` | Null; likely integer or string | Yes | Exclude | Appears to be an internal system identifier. |
-| `auction_type_id` | Integer | No | Retain | May identify materially different auction formats. Meaning needs documentation. |
-| `removal_text` | Null; likely string | Yes | Exclude | Free-form operational or instructional text; not currently needed. |
-| `is_active` | Integer flag | No | QA only | Meaning is ambiguous: the sample has `is_active=1` but `is_open=0`. Do not interpret this as bidding status. |
-| `free_transfers` | Integer flag | No | Retain | Could affect bidder participation or total acquisition cost. |
-| `date_launched` | ISO 8601 timestamp | No | Retain | Actual launch time; may differ from `opening_date` and can support duration features. |
-| `date_completed` | Null; expected timestamp | Yes | QA only | Appears operational. Investigate only if it proves necessary for identifying completed auctions. |
-| `is_open` | Integer flag | No | QA only | Useful for confirming the auction is closed before collection. |
-| `stagger_close_seconds` | Integer | No | Retain | Auction-rule feature describing staggered lot closing. |
-| `extension_window_seconds` | Integer | No | Retain | Defines when late bidding triggers an extension. Relevant to dynamic bidding behavior. |
-| `time_extension_seconds` | Integer | No | Retain | Length of a bidding-time extension. Relevant to auction dynamics. |
-| `total_lots` | Null; expected integer | Yes | Investigate | Potentially useful, but null in this response. Actual retrieved item counts may be more dependable. |
-| `online_only` | Integer flag | No | Retain | Auction-format feature that may affect participation. |
-| `members_only` | Integer flag | No | Retain | Participation restriction that could affect bidder population and prices. |
-| `new_billing` | Integer flag | No | Exclude | Appears to describe an internal billing implementation. |
-| `label_size` | Null; type unknown | Yes | Exclude | Appears to be an internal warehouse or printing field. |
-| `title` | Null; expected string | Yes | Investigate | May distinguish special auction types, but is free-form expressive content. |
-| `description` | Null; expected string | Yes | Exclude | Free-form expressive content not currently necessary for auction identification. |
-| `logo` | Null; expected string or URL | Yes | Exclude | Branding or image reference not needed for analysis. |
-| `date_reviewed` | Null; expected timestamp | Yes | Exclude | Appears to describe an internal review workflow. |
-| `lot_fee_override` | Number | No | Retain | Transaction-cost feature that may affect bidding. Verify whether the value is expressed in dollars. |
-| `buyers_premium_override` | Null; expected number | Yes | Retain | Buyer’s premium affects total customer cost. Store as nullable and verify whether it represents a percentage or amount. |
-| `immediate_settle` | Integer flag | No | Investigate | May identify differences in payment timing or auction rules. |
-| `custom_invoice_email` | Null; expected string | Yes | Exclude | Potential contact or administrative content and unnecessary for the research. |
-| `non_taxable` | Integer flag | No | Retain | Tax treatment may affect the customer’s effective total cost. |
-| `summary_email` | Null; type unknown | Yes | Exclude | Appears to be an internal email or notification setting. |
-| `info_message` | Null; expected string | Yes | Exclude | Free-form informational content not required for the model. |
-| `registration_message` | Null; expected string | Yes | Exclude | Free-form registration content not required for the model. |
-| `pickup_override` | Null; expected string or flag | Yes | Investigate | Meaning is unclear; may contain operational pickup information. |
-| `slug` | Null; expected string | Yes | Exclude | Website-routing field that is unnecessary because you already have stable identifiers. |
-| `location_auction_build_config_id` | Integer | No | Exclude | Appears to be an internal configuration identifier. |
-| `location_name` | String | No | Retain | Human-readable location and auction group, such as `Henderson - A`. |
-| `building_id` | Integer | No | Retain | Primary warehouse filter used to identify Henderson and North Las Vegas. |
-| `items` | Array | No | Exclude from this endpoint | Empty because `getItems=0`; items should come from the dedicated auction-items request. |
+| `id` | Integer | No | Stored in staging | Stored as `auction_id`. The numeric ID is used for the auction-items request. |
+| `date_created` | ISO 8601 timestamp | No | Not stored in staging | Indicates when the auction record was created. Only useful as an internal, administrative field. |
+| `auction_number` | String | No | Stored in staging | Human-readable auction identifier and connection to generated candidates. |
+| `opening_date` | ISO 8601 timestamp | No | Stored in staging | Source-reported scheduled opening. |
+| `closing_date` | ISO 8601 timestamp | No | Stored in staging | Source-reported auction closing time. Lot-level closing times are recorded separately. |
+| `external_folder_name` | Null; likely string | Yes | Not stored in staging | Appears to be an internal operational field. |
+| `pickup_date` | String | No | Stored in staging | Human-formatted pickup information, not a complete timestamp. |
+| `closed_for_entry` | Integer flag | No | Not stored in staging | Likely indicates whether new inventory details can be added. |
+| `location_id` | Integer | No | Stored in staging | Location identifier stored separately from `building_id`. |
+| `allow_transfers` | Integer flag | No | Stored in staging | Source flag for transfer availability. |
+| `abandon_date` | ISO 8601 timestamp | No | Stored in staging | May indicate the deadline after which uncollected purchases are abandoned. |
+| `auction_mobility_id` | Null; likely integer or string | Yes | Not stored in staging | Appears to be an internal system identifier. |
+| `auction_type_id` | Integer | No | Stored in staging | Source auction-type identifier. |
+| `removal_text` | Null; likely string | Yes | Not stored in staging | Free-form operational or instructional text; not currently needed. |
+| `is_active` | Integer flag | No | Not stored in staging | Meaning is ambiguous: the sample has `is_active=1` but `is_open=0`. Do not interpret this as bidding status. |
+| `free_transfers` | Integer flag | No | Stored in staging | Source flag for free transfers. |
+| `date_launched` | ISO 8601 timestamp | No | Stored in staging | Source-reported launch time, recorded separately from `opening_date`. |
+| `date_completed` | Null; expected timestamp | Yes | Not stored in staging | Appears operational. |
+| `is_open` | Integer flag | No | Not stored in staging | The auction is already closed before collection. |
+| `stagger_close_seconds` | Integer | No | Stored in staging | Source-reported staggered closing interval. |
+| `extension_window_seconds` | Integer | No | Stored in staging | Source-reported window in which late bids may trigger an extension. |
+| `time_extension_seconds` | Integer | No | Stored in staging | Source-reported extension length. |
+| `total_lots` | Null; expected integer | Yes | Stored in staging | Stored as `total_lots_source`. NULL across the January–March audited auction rows. |
+| `online_only` | Integer flag | No | Stored in staging | Source flag for online-only auctions. |
+| `members_only` | Integer flag | No | Stored in staging | Source flag for members-only auctions. |
+| `new_billing` | Integer flag | No | Not stored in staging | Appears to describe an internal billing implementation. |
+| `label_size` | Null; type unknown | Yes | Not stored in staging | Appears to be an internal warehouse or printing field. |
+| `title` | Null; expected string | Yes | Not stored in staging | May distinguish special auction types, but `auction_type` already handles same function. |
+| `description` | Null; expected string | Yes | Not stored in staging | Free-form expressive content not currently necessary for auction identification. |
+| `logo` | Null; expected string or URL | Yes | Not stored in staging | Branding or image reference not needed for analysis. |
+| `date_reviewed` | Null; expected timestamp | Yes | Not stored in staging | Appears to describe an internal review workflow. |
+| `lot_fee_override` | Number | No | Stored in staging | Stored as `lot_fee_override_source`. Source unit is unverified. |
+| `buyers_premium_override` | Null; expected number | Yes | Stored in staging | Stored as `buyers_premium_override_source`. NULL across the January–March audited auction rows. Source meaning and unit are unverified. |
+| `immediate_settle` | Integer flag | No | Stored in staging | Source flag for immediate settlement. |
+| `custom_invoice_email` | Null; expected string | Yes | Not stored in staging | Potential contact or administrative content and unnecessary for the research. |
+| `non_taxable` | Integer flag | No | Stored in staging | Source flag for tax treatment. |
+| `summary_email` | Null; type unknown | Yes | Not stored in staging | Appears to be an internal email or notification setting. |
+| `info_message` | Null; expected string | Yes | Not stored in staging | Free-form informational content not required for the model. |
+| `registration_message` | Null; expected string | Yes | Not stored in staging | Free-form registration content not required for the model. |
+| `pickup_override` | Null; expected string or flag | Yes | Not stored in staging | May contain operational pickup information, or involve a post-auction pickup date extension. Neither are relevant winning bid predictors. |
+| `slug` | Null; expected string | Yes | Not stored in staging | Website-routing field that is unnecessary because you already have stable identifiers. |
+| `location_auction_build_config_id` | Integer | No | Not stored in staging | Appears to be an internal configuration identifier. |
+| `location_name` | String | No | Stored in staging | Human-readable location and auction group, such as `Henderson - A`. |
+| `building_id` | Integer | No | Stored in staging | Primary warehouse identifier, such as `Henderson` or `North Las Vegas`. |
+| `items` | Array | No | Not stored in staging | Empty because `getItems=0`; items should come from the dedicated auction-items request. |
 
 ### Endpoint 2: Auction items by auction ID
+
+**Staging destination** — `staging_lot_summaries` (from `items[]`).
 
 #### GET `/auctions/{auction_id}?pg={page}&ppg={page_size}`
 
@@ -78,115 +82,113 @@ to be empty. Item records are obtained through endpoint 2: auction items by auct
 `GET /auctions/{auction_number}?getItems=0`.
 
 **Pagination note:** The provided response contains the first page of
-up to 100 items. Because `total_lots` is null, total auction size should
-not be inferred from that field. Pagination behavior must be verified
-using additional pages.
+up to 100 items. `total_lots` was NULL in the January–March staging audit. The array is a page of item observations.
 
 #### items[] fields
 
-| JSON field | Observed type | Null in sample? | Preliminary decision | Reason or interpretation |
+| JSON field | Observed type | Null or absent in sample? | Staging disposition | Staging note or source interpretation |
 |---|---|---:|---|---|
-| `id` | Integer | No | Retain | Numeric lot ID. Required for bid-history requests. Rename `lot_id`. |
-| `auction_id` | Integer | No | Retain | Foreign key connecting the lot to its auction. |
-| `closed_date` | ISO 8601 timestamp | No | Retain | Actual lot closing time. May differ among lots because of staggered closing and extensions. |
-| `expected_close_date` | ISO 8601 timestamp | No | Retain with caution | Expected closing time. Determine whether a historical response reflects the original schedule or incorporates extensions. |
-| `inventory_id` | Integer | No | Investigate | Likely identifies the underlying physical inventory record. Its usefulness for detecting repeated products is not yet established. |
-| `date_created` | ISO 8601 timestamp | No | Retain | Time the lot record was created. Rename `lot_created_at_utc`. |
-| `lot_number` | String | No | Retain | Auction-relative identifier used by the single-item endpoint. |
-| `listing_url` | Null; expected string/URL | Yes | Exclude | External or internal listing link that is unnecessary for the analysis. |
-| `is_open` | Integer flag | No | QA only | Confirms whether bidding remains open for the lot. |
-| `is_transferrable` | Integer flag | No | Retain | Transfer availability could affect demand. Correct spelling to `is_transferable` in curated data. |
-| `total_bids` | Integer | No | **Retain with leakage controls** | Final bid count is an outcome. It must not be used as an earlier-time predictor unless calculated from bids available at prediction time. |
-| `winning_customer_id` | Integer | No | **Exclude (ensures data compliance)** | Customer-linked identifier that is unnecessary for the research. |
-| `winning_bid_id` | String | No | **Derive then discard (ensures data compliance)** | Contains a timestamp and customer identifier. If the final-bid timestamp is necessary, extract only the timestamp and discard the original value. |
-| `winning_bid_amount` | JSON number | No | Retain | Primary final-price outcome. Convert to integer cents in curated data. |
-| `unique_bidders` | Integer | No | **Retain with leakage controls** | Useful outcome or descriptive measure. Final bidder count cannot be used as a pre-close predictor. |
-| `pulled_date` | Null; expected timestamp | Yes | Exclude | Appears to be an internal warehouse-operation field. |
-| `pulled_by` | Null; type unknown | Yes | Exclude | Could identify an employee or operational account. Not necessary. |
-| `title` | String | No | Exclude as duplicate | Duplicates `product_name` in this sample. Reconsider only if later samples show meaningful differences. |
-| `product_name` | String | No | Retain | Needed for product identification and matching repeated products. Do not republish full listings. |
-| `upc` | String | No | Retain | Potential repeated-product identifier. Store as text because values may contain letters or leading zeros. |
-| `description` | String | No | Derive then discard | Expressive listing content. Extract only predefined necessary features, such as an explicit “As-Is” indicator, then discard the full text. |
-| `dimensions` | String | No | Investigate | Potential product-size feature, but format requires normalization. |
-| `quantity` | Integer | No | Retain with validation | Item quantity may affect price. The observed value of zero requires investigation. |
-| `is_pallet` | Integer flag | No | Retain | Product/auction format feature that may strongly affect price. |
-| `is_shippable` | Integer flag | No | Retain | Availability of shipping may affect bidder participation. |
-| `current_location_id` | Integer | No | Retain | Lot-level location identifier. Useful for validating consistency with the auction location. |
-| `shipping_height` | Null; expected number | Yes | Investigate | Potential physical-size feature. Units must be established. |
-| `shipping_width` | Null; expected number | Yes | Investigate | Potential physical-size feature. Units must be established. |
-| `shipping_length` | Null; expected number | Yes | Investigate | Potential physical-size feature. Units must be established. |
-| `warehouse_location` | String | No | Exclude | Exact internal storage position is unnecessary and could change operationally. |
-| `shipping_weight` | Null; expected number | Yes | Investigate | Potential product feature. Units must be established. |
-| `case_packed_qty` | Null; expected number | Yes | Investigate | May represent package quantity; meaning must be verified. |
-| `retail_price` | JSON number | No | Retain | Important baseline-price feature. Convert to integer cents in curated data. |
-| `is_partial` | Integer flag | No | Retain | May indicate incomplete merchandise and materially affect value. |
-| `condition_name` | String | No | Retain | Important product-condition feature, such as `OPEN BOX`. |
-| `category` | String | No | Retain | Product category for modeling, grouping, and evaluation. |
-| `image_url` | String/URL | No | Exclude | Product photograph reference is not needed for the planned model. |
-| `building_id` | Integer | No | Retain | Warehouse identifier used for project scope filtering. |
+| `id` | Integer | No | Stored in staging | Stored as `lot_id`. The numeric ID is used for the bid-history request. |
+| `auction_id` | Integer | No | Stored in staging | Auction identifier linking a lot to its parent auction. Many lots can share this value. |
+| `closed_date` | ISO 8601 timestamp | No | Stored in staging | Source-reported lot close time. |
+| `expected_close_date` | ISO 8601 timestamp | No | Stored in staging | Source-reported expected close. Whether historical responses reflect the original schedule or extensions is unverified. |
+| `inventory_id` | Integer | No | Stored in staging | Likely identifies the underlying physical inventory record. |
+| `date_created` | ISO 8601 timestamp | No | Stored in staging | Time the lot record was created. |
+| `lot_number` | String | No | Stored in staging | Auction-relative lot identifier used by the single-item request. |
+| `listing_url` | Null; expected string/URL | Yes | Not stored in staging | External or internal listing link that is unnecessary for the analysis. |
+| `is_open` | Integer flag | No | Not stored in staging | Confirms whether bidding remains open for the lot. |
+| `is_transferrable` | Integer flag | No | Stored in staging | Stored as `is_transferable_source`. |
+| `total_bids` | Integer | No | Stored in staging | Final bid count reported by the endpoint, stored as `total_bids_source`. |
+| `winning_customer_id` | Integer | No | Not stored in staging | Customer-linked identifier that is unnecessary for the research. |
+| `winning_bid_id` | String | No | Not stored in staging | Contains a timestamp and customer identifier. |
+| `winning_bid_amount` | JSON number | No | Stored in staging | Reported winning bid amount, stored as `winning_bid_amount_source`. |
+| `unique_bidders` | Integer | No | Stored in staging | Final bidder count reported by the endpoint, stored as `unique_bidders_source`. |
+| `pulled_date` | Null; expected timestamp | Yes | Not stored in staging | Appears to be an internal warehouse-operation field. |
+| `pulled_by` | Null; type unknown | Yes | Not stored in staging | Could identify an employee or operational account. Not necessary. |
+| `title` | String | No | Not stored in staging | Duplicates `product_name` in this sample. Reconsider only if later samples show meaningful differences. |
+| `product_name` | String | No | Stored in staging | Source product name. |
+| `upc` | String | No | Stored in staging | Stored as `product_upc`. Preserve source text and leading zeros. |
+| `description` | String | No | Verify staging mapping | Expressive listing text. Verify whether staging stores a presence flag, a derived indicator, or the source value. |
+| `dimensions` | String | No | Stored in staging | Stored as `dimensions_text`. Units and format are unverified. |
+| `quantity` | Integer | No | Stored in staging | Stored as `quantity_source`. Zero has been observed; its meaning is unverified. |
+| `is_pallet` | Integer flag | No | Stored in staging | Source pallet flag. |
+| `is_shippable` | Integer flag | No | Stored in staging | Stored as `is_shippable_source`. |
+| `current_location_id` | Integer | No | Stored in staging | Lot-level location reported at collection. |
+| `shipping_height` | Null; expected number | Yes | Stored in staging | Potential physical-size feature. Units must be established. |
+| `shipping_width` | Null; expected number | Yes | Stored in staging | Potential physical-size feature. Units must be established. |
+| `shipping_length` | Null; expected number | Yes | Stored in staging | Potential physical-size feature. Units must be established. |
+| `warehouse_location` | String | No | Not stored in staging | Exact internal storage position is unnecessary and could change operationally. |
+| `shipping_weight` | Null; expected number | Yes | Stored in staging | Potential product feature. Units must be established. |
+| `case_packed_qty` | Null; expected number | Yes | Stored in staging | May represent package quantity; meaning must be verified. |
+| `retail_price` | JSON number | No | Stored in staging | Stored as `retail_price_source`. Summary and detail values are recorded separately. |
+| `is_partial` | Integer flag | No | Stored in staging | Stored as `is_partial_source`. |
+| `condition_name` | String | No | Stored in staging | Source-reported condition category. |
+| `category` | String | No | Stored in staging | Stored as `category_name` in the lot summary table. |
+| `image_url` | String/URL | No | Not stored in staging | Product photograph reference is not needed for the planned model. |
+| `building_id` | Integer | No | Not stored in staging | Warehouse identifier already used for project scope filtering. |
 
-### Endpoint 3: Single item by auction number and lot number
+### Endpoint 3: Single item by auction ID and lot number
 
-#### GET `/auction/{auction_number}/lot/{lot_number}`
+**Staging destination** — `staging_lot_details`.
+
+#### GET `/auction/{auction_id}/lot/{lot_number}`
 
 **Response shape:** One lot JSON object containing:
-
 - detailed lot and product fields;
 - an `images` array; and
 - a nested `auction` object.
 
-**Identifier note:** This endpoint requires the alphanumeric
-`lot_number`, not the numeric `lot_id`.
-
 #### Single item fields
 
-| JSON field | Observed type | Null in sample? | Preliminary decision | Reason or interpretation |
+| JSON field | Observed type | Null or absent in sample? | Staging disposition | Staging note or source interpretation |
 |---|---|---:|---|---|
-| `product_id` | Integer | No | Retain | Potential catalog-level product identifier. Could be especially valuable for recognizing repeated identical products. |
-| `id` | Integer | No | Retain | Numeric lot ID required by the bid-history endpoint. Rename `lot_id`. |
-| `auction_type` | String | No | Retain | Human-readable auction format, such as `standard`. |
-| `auction_id` | Integer | No | Retain | Foreign key connecting the lot to its auction. |
-| `closed_date` | ISO 8601 timestamp | No | Retain | Actual lot closing time. |
-| `expected_close_date` | ISO 8601 timestamp | No | Retain with caution | Determine whether historical responses contain the original expected close or the final extension-adjusted time. |
-| `instant_win_price` | JSON number | No | Retain | Immediate-purchase price potentially visible to bidders. Convert to integer cents. |
-| `buyers_assurance_cost` | JSON number | No | Retain | Additional customer cost that could affect bids. Convert to integer cents. |
-| `current_location_id` | Integer | No | Retain | Lot-level location identifier. |
-| `inventory_id` | Integer | No | Investigate | Likely identifies the physical inventory record rather than a reusable product. |
-| `update_text` | Null; expected string | Yes | Derive then discard | Potential free-form listing update. If needed, retain only a predefined flag such as `has_update`. |
-| `date_created` | ISO 8601 timestamp | No | Retain | Time the lot record was created. |
-| `lot_number` | String | No | Retain | Auction-relative item identifier. |
-| `listing_url` | Null; expected URL | Yes | Exclude | External or internal listing link unnecessary for the analysis. |
-| `title` | String | No | Exclude as duplicate | Duplicates `product_name` in this sample. Reconsider if later samples show meaningful differences. |
-| `is_open` | Integer flag | No | QA only | Confirms whether the lot remains open. |
-| `is_transferrable` | Integer flag | No | Retain | Transfer eligibility could affect demand. Rename corrected field to `is_transferable`. |
-| `total_bids` | Integer | No | **Retain with leakage controls** | Final bid count. Do not use as an earlier-time feature unless reconstructed from bid history. |
-| `winning_customer_id` | Integer | No | **Exclude (ensures data compliance)** | Customer-linked identifier unnecessary for the research. |
-| `winning_bid_id` | String | No | **Derive then discard (ensures data compliance)** | Contains both a timestamp and customer ID. Extract only the timestamp if justified. |
-| `winning_bid_amount` | JSON number | No | **Retain with leakage controls** | Final-price outcome. Convert to integer cents. |
-| `unique_bidders` | Integer | No | **Retain with leakage controls** | Final bidder count; not valid as an earlier-time predictor. |
-| `product_name` | String | No | Retain | Needed to identify and match repeated products. Do not republish listings. |
-| `lot_status` | String | No | QA only | `PICKED UP` is a post-auction operational status, not a prediction-time feature. |
-| `description` | String | No | Derive then discard | Expressive listing content. Extract only predefined features such as `is_as_is`, then discard the text. |
-| `size` | Null; expected string | Yes | Investigate | Potential product-size feature. Meaning and formatting need validation. |
-| `is_shippable` | Integer flag | No | Retain | Shipping availability could affect bidder participation. |
-| `model` | Null; expected string | Yes | Retain | Product-model identifier could substantially improve repeated-product matching. |
-| `warehouse_location` | String | No | Exclude | Internal shelf or warehouse position is unnecessary. |
-| `dimensions` | String | No | Investigate | Potential size feature requiring normalization and unit validation. |
-| `is_partial` | Integer flag | No | Retain | Indicates potentially incomplete merchandise. |
-| `partial_note` | String | No | Derive then discard | Free-form expressive content. Consider retaining only `has_partial_note`. |
-| `is_tested` | Integer flag | No | Retain | Structured condition information likely relevant to price. |
-| `tested_note` | String | No | Derive then discard | Retain only a predefined indicator or structured result if necessary. |
-| `damaged_note` | String | No | Derive then discard | Damage is relevant, but the complete free-form text need not be retained. |
-| `upc` | String | No | Retain | Potential product identifier. Keep as text because values may contain letters or leading zeros. |
-| `boxes` | Integer | No | Retain | Number of boxes associated with the lot; may reflect product size or completeness. |
-| `category_name` | String | No | Retain | Product category. Standardize with the `category` field from Endpoint 2. |
-| `retail_price` | JSON number | No | Retain | Important baseline-price feature. Convert to integer cents. |
-| `condition_name` | String | No | Retain | Structured product-condition category. |
-| `image_url` | String/URL | No | Exclude | Product photograph reference is unnecessary for the planned model. |
-| `images` | Array of objects | No | Exclude | Photographs and their metadata are unnecessary for the planned model. |
-| `auction` | Object | No | Do not duplicate | Nested auction metadata already collected through the auction endpoints. Use it for validation rather than storing another copy. |
+| `product_id` | Integer | No | Stored in staging | Source product identifier. Its stability across repeat listings is unverified. |
+| `id` | Integer | No | Stored in staging | Stored as `lot_id`. The numeric ID is used for the bid-history request. |
+| `auction_type` | String | No | Stored in staging | Human-readable auction format, such as `standard`. |
+| `auction_id` | Integer | No | Stored in staging | Auction identifier linking a lot to its parent auction. Many lots can share this value. |
+| `closed_date` | ISO 8601 timestamp | No | Stored in staging | Source-reported lot close time. |
+| `expected_close_date` | ISO 8601 timestamp | No | Stored in staging | Source-reported expected close. Whether historical responses reflect the original schedule or extensions is unverified. |
+| `instant_win_price` | JSON number | No | Stored in staging | Source-reported immediate-purchase price. |
+| `buyers_assurance_cost` | JSON number | No | Stored in staging | Source-reported buyer-assurance cost. |
+| `current_location_id` | Integer | No | Stored in staging | Lot-level location reported at collection. |
+| `inventory_id` | Integer | No | Stored in staging | Likely identifies the underlying physical inventory record. |
+| `update_text` | Null; expected string | Yes | Verify staging mapping | Free-form listing update. Verify whether staging stores a presence flag or the source value. |
+| `date_created` | ISO 8601 timestamp | No | Stored in staging | Time the lot record was created. |
+| `lot_number` | String | No | Stored in staging | Auction-relative lot identifier used by the single-item request. |
+| `listing_url` | Null; expected URL | Yes | Not stored in staging | External or internal listing link unnecessary for the analysis. |
+| `title` | String | No | Not stored in staging | Duplicates `product_name` in this sample. |
+| `is_open` | Integer flag | No | Not stored in staging | Confirms whether bidding remains open for the lot. |
+| `is_transferrable` | Integer flag | No | Stored in staging | Stored as `is_transferable_source`. |
+| `total_bids` | Integer | No | Stored in staging | Final bid count reported by the endpoint, stored as `total_bids_source`. |
+| `winning_customer_id` | Integer | No | Not stored in staging | Customer-linked identifier that is unnecessary for the research. |
+| `winning_bid_id` | String | No | Not stored in staging | Contains a timestamp and customer identifier. |
+| `winning_bid_amount` | JSON number | No | Stored in staging | Reported winning bid amount, stored as `winning_bid_amount_source`. |
+| `unique_bidders` | Integer | No | Stored in staging | Final bidder count reported by the endpoint, stored as `unique_bidders_source`. |
+| `product_name` | String | No | Stored in staging | Source product name. |
+| `lot_status` | String | No | Stored in staging | Operational status observed at collection, for example `PICKED UP`. |
+| `description` | String | No | Verify staging mapping | Expressive listing text. Verify whether staging stores a presence flag, a derived indicator, or the source value. |
+| `size` | Null; expected string | Yes | Stored in staging | Potential product-size feature. |
+| `is_shippable` | Integer flag | No | Stored in staging | Stored as `is_shippable_source`. |
+| `model` | Null; expected string | Yes | Stored in staging | Source product model text. |
+| `warehouse_location` | String | No | Not stored in staging | Internal shelf or warehouse position is unnecessary. |
+| `dimensions` | String | No | Stored in staging | Stored as `dimensions_text`. Units and format are unverified. |
+| `is_partial` | Integer flag | No | Stored in staging | Stored as `is_partial_source`. |
+| `partial_note` | String | No | Verify staging mapping | Free-form note. Verify whether staging stores a presence flag or the source value. |
+| `is_tested` | Integer flag | No | Stored in staging | Structured condition information likely relevant to price. |
+| `tested_note` | String | No | Verify staging mapping | Free-form note. Verify whether staging stores a presence flag or the source value. |
+| `damaged_note` | String | No | Verify staging mapping | Free-form note. Verify whether staging stores a presence flag or the source value. |
+| `upc` | String | No | Stored in staging | Stored as `product_upc`. Preserve source text and leading zeros. |
+| `boxes` | Integer | No | Stored in staging | Number of boxes associated with the lot; may reflect product size or completeness. |
+| `category_name` | String | No | Stored in staging | Stored separately as `category_name` in the lot detail table. |
+| `retail_price` | JSON number | No | Stored in staging | Stored as `retail_price_source`. Summary and detail values are recorded separately. |
+| `condition_name` | String | No | Stored in staging | Source-reported condition category. |
+| `image_url` | String/URL | No | Not stored in staging | Raw image references are omitted per the inventory. The audit shows a staged `has_primary_image` flag. Verify its exact source and rule. |
+| `images` | Array of objects | No | Not stored in staging | Raw image references are omitted per the inventory. The audit shows a staged `has_primary_image` flag. Verify its exact source and rule. |
+| `auction` | Object | No | Not stored in staging | Nested auction metadata. Auction records are obtained through the auction lookup. |
 
 ### Endpoint 4: Bid history by lot ID
+
+**Staging destination** — `staging_lot_bid_histories` and `staging_bid_events`.
 
 #### GET `/auctions/lot/{lot_id}/bid-history`
 
@@ -197,21 +199,27 @@ not the alphanumeric `lot_number`.
 
 #### Top-level fields
 
-| JSON field | Observed type | Decision | Reason |
+| JSON field | Observed type | Staging disposition | Reason |
 |---|---|---|---|
-| `bids` | Array of objects | Retain selectively | Contains the bid-event history used to construct dynamic features. |
+| `bids` | Array of objects | Expanded | Selected child fields populate `staging_bid_events`. The response is also represented in `staging_lot_bid_histories`. |
 
 #### bids[] field inventory
 
-| JSON field | Observed type | Null in sample? | Preliminary decision | Reason or interpretation |
+| JSON field | Observed type | Null or absent in sample? | Staging disposition | Staging note or source interpretation |
 |---|---|---:|---|---|
-| `lot_id` | Integer | No | Retain | Foreign key connecting each bid to its lot. |
-| `bid_amount` | JSON number | No | Retain | Amount submitted for the bid event. Convert to integer cents. |
-| `bid_time` | ISO 8601 timestamp | No | Retain | Timestamp of the bid event; essential for time-dependent features. |
-| `lot_end_time` | ISO 8601 timestamp | No | Retain with caution | End time reported by the bid-history system. It conflicts with `closed_date` from the item endpoints in this example. |
-| `isMatchedProxy` | Boolean | No | Retain | Indicates whether the event represents or involves a matched proxy bid. Meaning should be validated with examples containing `true`. |
-| `anonId` | String | No | **Derive then discard (ensures data compliance)** | Per-lot pseudonymous bidder label. Use temporarily to calculate bidder-based features, then remove. |
-| `displayedBid` | JSON number | No | Retain | Bid amount displayed after the event. May differ from `bid_amount` during proxy bidding. Convert to integer cents. |
-| `bidType` | String | No | Retain | Bid mechanism, such as `manual`. Standardize as a categorical value. |
-| `isCurrentUser` | Boolean | No | Exclude | Account-relative field with no analytical value in an unauthenticated research collection. |
-| `isCurrentWinner` | Boolean | Absent on some rows | **Exclude (ensures data compliance)** | Describes the final current winner when the response is retrieved; it is not a prediction-time feature. |
+| `lot_id` | Integer | No | Stored in staging | Lot identifier linking the event to its lot history. |
+| `bid_amount` | JSON number | No | Stored in staging | Bid amount reported for the event. |
+| `bid_time` | ISO 8601 timestamp | No | Stored in staging | Timestamp of the bid event; essential for time-dependent features. |
+| `lot_end_time` | ISO 8601 timestamp | No | Stored in staging | End time reported by the bid-history endpoint. It differs from `closed_date` in the documented example. |
+| `isMatchedProxy` | Boolean | No | Stored in staging | Source proxy-match flag. Exact semantics are unverified. |
+| `anonId` | String | No | Verify staging mapping | Pseudonymous bidder label. Verify the collector and schema for persistence and any aggregate actually derived at ingestion. |
+| `displayedBid` | JSON number | No | Stored in staging | Displayed bid amount reported for the event. It can differ from `bid_amount`. |
+| `bidType` | String | No | Stored in staging | Source bid mechanism, for example `manual`. |
+| `isCurrentUser` | Boolean | No | Not stored in staging | Account-relative field with no analytical value in an unauthenticated research collection. |
+| `isCurrentWinner` | Boolean | Absent on some rows | Not stored in staging | Describes the final current winner when the response is retrieved; it is not a prediction-time feature. |
+
+## Staging metadata and coverage
+
+The field tables cover response values. The collector also records staging metadata such as `collection_run_id` and the history's `observed_bid_record_count`. These are generated during ingestion. Use the staging schema and collector to document their exact definitions. Summary and detail records may coexist for a lot and may differ in value or coverage.
+
+Nested arrays and objects are listed at the level represented by the available samples. Their child keys are documented where the collector uses them or where separate field tables are provided.
