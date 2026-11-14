@@ -3,6 +3,8 @@ Read-only quality audits for monthly MAC.BID staging tables.
 
 run_staging_audits.py controls which databases are audited 
 when running the staging audit process.
+
+This script helps decide which rules to adopt for processing staging data.
 """
 
 from sqlalchemy.engine import Connection
@@ -19,12 +21,17 @@ from sqlalchemy import (
     and_,
 )
 
+import database
 from database.staging_tables import (
     staging_auctions,
     staging_lot_summaries,
     staging_lot_details,
     staging_lot_bid_histories,
     staging_bid_events,
+)
+
+from processing.constants import(
+    STAGING_DATABASES,
 )
 
 # ---------------------------------------------------------
@@ -188,6 +195,7 @@ def classify_column(
         row_count: int,
         non_null_count: int,
         distinct_non_null_count: int,
+        null_count: int,
 ) -> str:
     """Classify column variability without treating NULL as a value.
     
@@ -214,7 +222,7 @@ def classify_column(
 
     else:
         # More than one distinct non-null value observed.
-        return "variable"
+        return "variable_with_nulls" if null_count > 0 else "variable"
 
 # ---------------------------------------------------------
 # SAMPLE_SHARED_FIELD_DISAGREEMENTS
@@ -321,6 +329,7 @@ def audit_column_profiles(
             row_count=row_count,
             non_null_count=non_null_count,
             distinct_non_null_count=distinct_non_null_count,
+            null_count=null_count,
         )
 
         audit_results.append(
@@ -562,4 +571,30 @@ def audit_bid_record_counts(
     return {
         "histories_checked": int(row.histories_checked),
         "bid_count_mismatches": int(row.count_mismatches),
+    }
+
+# ---------------------------------------------------------
+# AUDIT_AUCTION_ID_OVERLAP
+# ---------------------------------------------------------
+
+def audit_auction_id_overlap(auctions_by_database: dict[str, list]):
+
+    sources_by_auction_id = {}
+
+    for database_name, auctions in auctions_by_database.items():
+        for auction in auctions:
+            auction_id = auction["auction_id"]
+
+            # Either gets the existing sources for this auction_id 
+            # or creates a new empty dict.
+            sources = sources_by_auction_id.setdefault(auction_id, {})
+
+            # Populate the nested dictionary with the database name as the key
+            # and the auction number as the value.
+            sources[database_name] = auction["auction_number"]
+
+    return {
+        auction_id: sources
+        for auction_id, sources in sorted(sources_by_auction_id.items())
+        if len(sources) > 1
     }

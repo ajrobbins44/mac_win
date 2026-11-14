@@ -26,8 +26,8 @@ from scripts.generate_auction_candidates import (
 from config import PROJECT_ROOT, BASE_URL
 
 # Must include start and end dates in the same month
-START_DATE = date(2026, 4, 1)
-END_DATE = date(2026, 4, 30)
+START_DATE = date(2026, 5, 1)
+END_DATE = date(2026, 5, 31)
 
 PATTERN_FILE = Path(
     PROJECT_ROOT,

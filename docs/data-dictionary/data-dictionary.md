@@ -1,7 +1,7 @@
 # Data Dictionary
 
-**Last Updated:** October 14, 2026
-**Status:** Pre-collection schema planning
+**Last Updated:** November 09, 2026
+**Status:** Initial post-collection schema planning
 **Schema Version:** 0.1
 
 ## Purpose
@@ -91,25 +91,6 @@ One row represents one successful data collection run.
 | `status` | `TEXT` | `running`, `completed`, `stopped`, or `failed` |
 | `status_reason` | `TEXT` | Reason for interruption (rate limiting, no data found, etc.) |
 
-### Table: `endpoint_fetches`
-
-Tracks each request and its outcome. 
-
-| Important column | SQLite type | Purpose |
-|---|---|---|
-| `endpoint_fetch_id` | `INTEGER` | Primary key |
-| `collection_run_id` | `INTEGER` | Foreign key |
-| `endpoint_type` | `TEXT` | `auction_lookup`, `auction_items`, `item_details`, or `bid_history` |
-| `auction_id` | `INTEGER` | Associated auction when applicable |
-| `lot_id` | `INTEGER` | Associated lot when applicable |
-| `page_number` | `INTEGER` | Page for paginated requests |
-| `requested_at_utc` | `TEXT` | Request timestamp |
-| `completed_at_utc` | `TEXT` | Response timestamp |
-| `http_status` | `INTEGER` | HTTP response status |
-| `result_status` | `TEXT` | `success`, `not_found`, `failed` |
-| `retry_count` | `INTEGER` | Number of retries |
-| `served_from_cache` | `INTEGER` | Boolean cache indicator |
-| `error_message` | `TEXT` | Error information provided in response |
 
 ###  Table: `auctions`
 
@@ -146,9 +127,9 @@ One row represents one auction. The stored data is shared by all items in the au
 
 `buyers_premium_override` cannot be added until figuring out whether the source value represents a currency amount, boolean, or some other class.
 
-## Table: `auction_items`
+## Table: `auction_lots`
 
-One row represents one auction lot item. While many of the same fields can be fetched from items[], using the single-item checkpoint fetches additional item-specific fields. 
+One row represents one auction lot item. While many of the same fields can be fetched from items[], using the single-item checkpoint fetches additional lot-specific fields. 
 
 | Column | SQLite type | Origin | Source or formula | Nullable | Key or constraint | Description |
 |---|---|---|---|---:|---|---|

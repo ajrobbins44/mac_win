@@ -1,9 +1,11 @@
 from collections import Counter
 from pathlib import Path
+from pprint import pprint
 
 from sqlalchemy import (
     create_engine,
     inspect,
+    select,
 )
 
 from processing.constants import (
@@ -13,16 +15,26 @@ from processing.constants import (
 )
 
 from processing.audit.staging_audits import (
+    audit_auction_id_overlap,
     audit_column_profiles,
     audit_shared_lot_fields,
     audit_referential_integrity,
     audit_bid_record_counts,
+    audit_auction_id_overlap,
 
     # Helper functions added after the initial audit results
     # revealed a need for further investigation of specific issues.
     sample_shared_field_disagreements,
     find_summaries_without_details,
 )
+
+from database.staging_tables import (
+    staging_auctions,
+)
+
+# ------------------------------------------------------
+# AUDIT_DATABASE
+# ------------------------------------------------------
 
 def audit_database(
     conn,
@@ -32,13 +44,15 @@ def audit_database(
     Execute the complete audit suite for one staging database.
 
     All audit functions share the same read-only connection.
-    Their results are retained rather than merely printed,
-    allowing future export to CSV or JSON.
+    Their results are often stored under 'mac_win/runtime/audits/staging'
+    for future reference.
     """
 
     inspector = inspect(conn)
 
-    # Store each audit's results under a descriptive key.
+    # Store the audit findings for one month under 
+    # a descriptive key with nested dictionaries or
+    # arrays to hold its values.
     results = {
         "database_name": database_name,
         "table_inventory": [],
@@ -46,6 +60,7 @@ def audit_database(
         "shared_lot_fields": [],
         "referential_integrity": {},
         "bid_record_counts": {},
+        "auction_identifiers": [],
     }
 
     # ------------------------------------------------------
@@ -80,6 +95,7 @@ def audit_database(
             for column in inspector.get_columns(table_name)
         ]
 
+        # Append one dictionary for this table to the table inventory list.
         results["table_inventory"].append({
             "database_name": database_name,
             "table_name": table_name,
@@ -97,6 +113,9 @@ def audit_database(
             row_count=row_count,
         )
 
+        # Each helper function result is a list of dictionaries.
+        # Extend adds each dictionary from the column_results list 
+        # to the column_profiles list.
         results["column_profiles"].extend(column_results)
 
     # ------------------------------------------------------
@@ -118,31 +137,32 @@ def audit_database(
     # 2A. SHARED FIELD DISAGREEMENT DIAGNOSTICS
     # ------------------------------------------------------
 
-    # Aggregate counts identify how frequently shared fields
-    # disagree, but do not reveal the actual conflicting values.
+    # Aggregate counts only identify how frequently shared 
+    # fields disagree.
     #
-    # Automatically identify fields with at least one
-    # non-NULL value mismatch between the summary and
-    # detail endpoints to avoid hardcoding field names.
+    # Find actual conflicting values by identifying fields 
+    # with at least one non-NULL value mismatch.
 
+    # Extract field names that have at least one mismatch that needs a
+    # follow-up query to retrieve sample rows for each mismatched field.
     mismatched_fields = [
         result["field_name"]
         for result in results["shared_lot_fields"]
         if int(result["mismatch_count"]) > 0
     ]
 
-    # Only list up to 20 examples per field to avoid overwhelming output.
+    results["shared_lot_fields_disagreement_samples"] = {}
+    
+    # Only list up to 10 examples per field to avoid overwhelming output.
     for field_name in mismatched_fields:
-        examples = sample_shared_field_disagreements(
+        samples = sample_shared_field_disagreements(
             conn,
             str(field_name),
-            limit=20,
+            limit=10,
         )
 
-        print(f"\nExamples for {field_name}:")
-
-        for example in examples:
-            print(example)
+        # Save samples inside the nested dictionary for the current field.
+        results["shared_lot_fields_disagreement_samples"][field_name] = samples
 
     # ------------------------------------------------------
     # 3. REFERENTIAL INTEGRITY
@@ -165,35 +185,20 @@ def audit_database(
     # ------------------------------------------------------
 
     # The referential integrity audit reports how many lot
-    # summaries lack corresponding detail records.
+    # summaries lack corresponding detail records. Missing
+    # lot details are the only flagged issues in audits 
+    # conducted so far.
     #
     # This diagnostic query retrieves the identifiers of
-    # those summaries so their collection history can be
-    # investigated individually.
+    # those summaries.
     #
     # No staging records are modified.
 
+    # Retrieve the summaries that lack corresponding detail records
+    # as a list of dictionaries for each summary.
     results["summaries_without_details"] = (
         find_summaries_without_details(conn)
     )
-
-    missing_details = results["summaries_without_details"]
-
-    print("\n4A. SUMMARIES WITHOUT LOT DETAILS")
-
-    if not missing_details:
-        print("  None")
-    else:
-        print(f" Missing detail records: {len(missing_details)}")
-
-        for lot in missing_details:
-            print(
-                f"  lot_id={lot['lot_id']}, "
-                f"auction_id={lot['auction_id']}, "
-                f"lot_number={lot['lot_number']}, "
-                f"collection_run_id={lot['collection_run_id']}"
-            )
-  
 
     # ------------------------------------------------------
     # 4. BID HISTORY CONSISTENCY
@@ -206,8 +211,88 @@ def audit_database(
         audit_bid_record_counts(conn)
     )
 
+    # ------------------------------------------------------
+    # 5. AUCTION IDENTIFIERS
+    # ------------------------------------------------------
+    
+    stmt = select(
+        staging_auctions.c.auction_id,
+        staging_auctions.c.auction_number,
+    )
+    results["auction_identifiers"] = conn.execute(stmt).mappings().all()
+
+    # Return the complete results dictionary for one monthly database audit.
     return results
 
+# ------------------------------------------------------
+# AUDIT_ALL_DATABASES
+# ------------------------------------------------------
+
+def audit_all_databases() -> dict:
+  
+    # Initialize a dictionary to store all audit results
+    # under its respective database name as the key.
+    all_results = {}
+
+    for database_name, db_path in STAGING_DATABASES.items():
+
+        # STAGING_DATABASES maps each report label (the database name) 
+        # to its corresponding file path.
+        db_path = Path(db_path)
+
+        if not db_path.is_file():
+            raise FileNotFoundError(
+                f"Staging database not found: {db_path}"
+            )
+
+        # SQLite URI mode=ro prevents writes through this
+        # connection to the staging database.
+        database_uri = (
+            db_path.resolve().as_uri() + "?mode=ro"
+        )
+
+        # uri=true is required to use read-only mode with SQLite URIs.
+        engine = create_engine(
+            "sqlite:///" + database_uri + "&uri=true"
+        )
+
+        try:
+            # Scoped to each monthly database.
+            with engine.connect() as conn:
+
+                # Execute all audits on this database.
+                results = audit_database(
+                    conn=conn,
+                    database_name=database_name,
+                )
+                all_results[database_name] = results
+
+        finally:
+            # Release the SQLite connection pool and file handles.
+            engine.dispose()
+
+    auctions_by_database = {
+        database_name: results["auction_identifiers"]
+        for database_name, results in all_results.items()
+    }
+
+    overlaps = audit_auction_id_overlap(auctions_by_database)
+
+    # Give each monthly report the overlaps that involve its database.
+    for database_name, results in all_results.items():
+        results["auction_id_overlap"] = {
+            auction_id: sources
+            for auction_id, sources in overlaps.items()
+            if database_name in sources
+        }
+
+    return all_results
+
+    
+
+# ------------------------------------------------------
+# PRINT_AUDIT_SUMMARY
+# ------------------------------------------------------
 
 def print_audit_summary(results: dict) -> None:
     """
@@ -215,12 +300,13 @@ def print_audit_summary(results: dict) -> None:
     the underlying detailed audit results.
     """
 
+    # Output header for each database's audit summary.
     print(f"\n{'=' * 65}")
     print(f"Database: {results['database_name']}")
     print(f"{'=' * 65}")
 
     # Table inventory
-    print("\n1. TABLE INVENTORY")
+    print("\n1. TABLE INVENTORY AND COLUMN PROFILES")
 
     for table in results["table_inventory"]:
         print(
@@ -229,17 +315,15 @@ def print_audit_summary(results: dict) -> None:
             f"{table['column_count']} columns"
         )
 
-    # Column profile classifications
-    print("\n2. COLUMN PROFILES")
-
     profiles = results["column_profiles"]
 
+    # Count how many columns fall into each classification.
     classifications = Counter(
         profile["classification"]
         for profile in profiles
     )
 
-    print(f"  Total columns profiled: {len(profiles)}")
+    print(f"  \nTotal columns profiled: {len(profiles)}")
 
     for classification, count in sorted(
         classifications.items()
@@ -253,6 +337,7 @@ def print_audit_summary(results: dict) -> None:
         "all_null",
         "strict_constant",
         "constant_when_present",
+        "variable_with_nulls",
     ):
         matching_profiles = [
             profile
@@ -276,11 +361,11 @@ def print_audit_summary(results: dict) -> None:
             )
 
     # Shared field comparisons
-    print("\n3. SHARED LOT FIELD CONSISTENCY")
+    print("\n2. SHARED LOT FIELD CONSISTENCY")
 
     shared_results = results["shared_lot_fields"]
 
-    print(f"  Fields compared: {len(shared_results)}")
+    print(f"  Fields compared: {len(shared_results)}\n")
 
     for field in shared_results:
 
@@ -297,8 +382,14 @@ def print_audit_summary(results: dict) -> None:
                 f"{detail_only} detail-only"
             )
 
+    # items() will yield each field name and its corresponding list of example disagreements.
+    for field_name, examples in results["shared_lot_fields_disagreement_samples"].items():
+            print(f"\n  Examples for {field_name}:")
+            for example in examples:
+                print(f"    {example}")
+
     # Referential integrity
-    print("\n4. REFERENTIAL INTEGRITY")
+    print("\n3. REFERENTIAL INTEGRITY")
 
     for check, value in results[
         "referential_integrity"
@@ -307,8 +398,20 @@ def print_audit_summary(results: dict) -> None:
         if check != "database_name":
             print(f"  {check}: {value}")
 
+    if results["summaries_without_details"]:
+        missing_summary_details = results["summaries_without_details"]
+        print(f" \nMissing summary detail records: {len(missing_summary_details)}")
+
+        for lot in missing_summary_details:
+            print(
+                f"  lot_id={lot['lot_id']}, "
+                f"auction_id={lot['auction_id']}, "
+                f"lot_number={lot['lot_number']}, "
+                f"collection_run_id={lot['collection_run_id']}"
+            )
+
     # Bid count consistency
-    print("\n5. BID RECORD CONSISTENCY")
+    print("\n4. BID RECORD CONSISTENCY")
 
     for check, value in results[
         "bid_record_counts"
@@ -316,6 +419,63 @@ def print_audit_summary(results: dict) -> None:
         print(f"  {check}: {value}")
 
 
+# ------------------------------------------------------
+# PRINT_ALL_DATABASES_AUDIT_SUMMARY
+# ------------------------------------------------------
+
+def print_all_databases_audit_summary(all_results):
+    table_totals = Counter()
+    shared_totals = {}
+
+    for database_name, results in all_results.items():
+        for table in results["table_inventory"]:
+            table_totals[table["table_name"]] += table["row_count"]
+
+        for field in results["shared_lot_fields"]:
+            field_name = field["field_name"]
+            counts = shared_totals.setdefault(field_name, Counter())
+
+            for key in (
+                "mismatch_count",
+                "summary_only_count",
+                "detail_only_count",
+            ):
+                counts[key] += int(field[key])
+
+    print(f"\nCOMBINED STAGING AUDIT ({len(all_results)} databases)")
+
+    print("\n1. TABLE ROW TOTALS")
+    for table_name, count in sorted(table_totals.items()):
+        print(f"  {table_name}: {count:,} rows")
+
+    print("\n2. SHARED LOT FIELD CONSISTENCY")
+    for field_name, counts in sorted(shared_totals.items()):
+        if any(counts.values()):
+            print(
+                f"  {field_name}: "
+                f"{counts['mismatch_count']:,} mismatches, "
+                f"{counts['summary_only_count']:,} summary-only, "
+                f"{counts['detail_only_count']:,} detail-only"
+            )
+
+    print("\n3. CROSS-DATABASE AUCTION ID OVERLAP")
+
+    overlaps = {}
+    for monthly_results in all_results.values():
+        overlaps.update(monthly_results["auction_id_overlap"])
+    
+    print(f"  Auction IDs found in multiple databases: {len(overlaps):,}")
+
+    for auction_id, sources in overlaps.items():
+        locations = ", ".join(
+            f"{database_name} ({auction_number})"
+            for database_name, auction_number in sorted(sources.items())
+        )
+        print(f"  {auction_id}: {locations}")
+            
+# ------------------------------------------------------
+# MAIN
+# ------------------------------------------------------
 def main() -> None:
     """
     Audit every configured monthly staging database.
@@ -325,50 +485,20 @@ def main() -> None:
     the underlying staging databases.
     """
 
-    all_results = {}
+    all_results = audit_all_databases()
 
-    for database_name, db_path in STAGING_DATABASES.items():
-
-        db_path = Path(db_path)
-
-        if not db_path.is_file():
-            raise FileNotFoundError(
-                f"Staging database not found: {db_path}"
-            )
-
-        # SQLite URI mode=ro prevents writes through this
-        # connection to the staging database.
-        database_uri = (
-            db_path.resolve().as_uri() + "?mode=ro"
-        )
-
-        engine = create_engine(
-            "sqlite:///" + database_uri + "&uri=true"
-        )
-
-        try:
-            with engine.connect() as conn:
-
-                # Execute all audits on this database.
-                results = audit_database(
-                    conn=conn,
-                    database_name=database_name,
-                )
-
-                # Retain detailed findings for future reporting.
-                all_results[database_name] = results
-
-                # Display the concise per-database summary.
-                print_audit_summary(results)
-
-        finally:
-            # Release the SQLite connection pool and file handles.
-            engine.dispose()
+    for results in all_results.values():
+        # Display the concise per-database summary.
+        print_audit_summary(results)
 
     print(
         f"\nCompleted audits for "
         f"{len(all_results)} staging databases."
     )
+
+    print_all_databases_audit_summary(all_results)
+
+    print("\nEnd of combined audit summary.")
 
 
 if __name__ == "__main__":
