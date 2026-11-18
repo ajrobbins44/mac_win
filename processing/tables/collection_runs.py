@@ -1,7 +1,8 @@
-from calendar import calendar
+from calendar import monthrange
 from datetime import date
 
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert
 from pathlib import Path
 
 from database.processed_tables import collection_runs as processed_runs
@@ -47,9 +48,14 @@ def validate_collection_run_dates(row):
 def import_collection_runs(source, target, database_path):
 
     source_db = Path(database_path).name
+
+    # Lookup table for mapping source collection_run_id 
+    # to processed collection_run_id.
     run_id_map = {}
 
     for staging_row in source.execute(select(staging_runs)).mappings():
+
+        # Convert the RowMapping to a dict in order to modify it.
         row = dict(staging_row)
         source_run_id = row["collection_run_id"]
 
@@ -57,24 +63,47 @@ def import_collection_runs(source, target, database_path):
 
         if corrected_month is not None:
             year, month = corrected_month
-            last_day = calendar.monthrange(year, month)[1]
+
+            # Use [1] to get the last day of the month, since monthrange returns 
+            # a tuple (weekday of first day of the month, number of days in month)
+            last_day = monthrange(year, month)[1]
             row["target_end_date"] = date(year, month, last_day).isoformat()
 
-    result = target.execute(
-        processed_runs.insert().values(
+        # Validate the dates before inserting into the processed database.
+        validate_collection_run_dates(row)
+
+        run_values = {
+            "request_started_at_utc": row["started_at_utc"],
+            "request_ended_at_utc": row["ended_at_utc"],
+            "target_start_date": row["target_start_date"],
+            "target_end_date": row["target_end_date"],
+            "status": row["status"],
+            "status_reason": row["status_reason"],
+        }
+
+        # Inserts into the processed collection_runs table, using its
+        # processed_runs alias to avoid confusion with the staging_runs table.
+        stmt = insert(processed_runs).values(
             source_db=source_db,
             source_collection_run_id=source_run_id,
-            request_started_at_utc=row["started_at_utc"],
-            request_ended_at_utc=row["ended_at_utc"],
-            target_start_date=row["target_start_date"],
-            target_end_date=row["target_end_date"],
-            target_building_ids=row["target_building_ids"],
-            status=row["status"],
-            status_reason=row["status_reason"],
+            **run_values
         )
-    )
-    processed_run_id = result.inserted_primary_key[0]
-    run_id_map[source_run_id] = processed_run_id
+
+        # Conflict resolution: if a row with the same source_db and 
+        # source_collection_run_id exists, update it with the new values.
+        stmt = stmt.on_conflict_do_update(
+            # Identify the composite unique contstraints
+            index_elements=[
+                processed_runs.c.source_db,
+                processed_runs.c.source_collection_run_id,
+            ],
+            # Update the existing row with the new values from run_values
+            set_=run_values,
+        ).returning(processed_runs.c.collection_run_id)
+
+        processed_run_id = target.execute(stmt).scalar_one()
+        run_id_map[source_run_id] = processed_run_id
+       
 
     return run_id_map
 

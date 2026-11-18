@@ -1,7 +1,6 @@
 from sqlalchemy import select
 
 from processing.tables import collection_runs
-from processing.tables.collection_runs import validate_collection_run_dates
 
 # ------------------------------------------------------
 # AUDIT_TABLE_DATES

@@ -10,7 +10,7 @@ Remember to add verification vs validation distinction
 | No staging column | `collection_runs.collection_run_id` | Generate | Verified | SQLite assigns the processed primary key. Use it for foreign keys in processed tables. |
 | No staging column | `collection_runs.source_db` | Generate | Verified | Use the input SQLite filename. |
 | `collection_runs.started_at_utc` | `collection_runs.request_started_at_utc` | Copy after validation | Validated | Validate the UTC timestamp format before inserting. This records when the collection run began. |
-| `collection_runs.ended_at_utc` | `collection_runs.ended_at_utc` | Copy after validation | Validated | Preserve `NULL` if no end time was recorded. Otherwise, validate the UTC format and check that the end is at or after the start. |
+| `collection_runs.ended_at_utc` | `collection_runs.request_ended_at_utc` | Copy after validation | Validated | Preserve `NULL` if no end time was recorded. Otherwise, validate the UTC format and check that the end is at or after the start. |
 | `collection_runs.target_start_date` | `collection_runs.target_start_date` | Copy after validation | Validated | Validate the calendar date as `YYYY-MM-DD`. |
 | `collection_runs.target_end_date` | `collection_runs.target_end_date` | Copy or correct | Validated | Validate the calendar date and date order. Apply the documented January scope correction to `2026-01-31` in processed. The original `2026-02-01` in staging records what the crawler used. |
 | `collection_runs.target_building_ids` | — | Omit | — | The intended crawl scope is available in staging. Use `auctions.building_id` for the building recorded for each auction. |

@@ -5,11 +5,11 @@ from datetime import date
 from database.processed_tables import processed_metadata
 from processing.helpers.validation import verify_keys_match
 
-from database.processed_tables import collection_runs as processed_runs
 from database.staging_tables import (
     collection_runs as staging_runs,
     staging_auctions,
 )
+from database.processed_tables import collection_runs as processed_runs
 
 from processing.tables.collection_runs import (
     import_collection_runs,

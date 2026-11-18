@@ -110,11 +110,6 @@ staging_auctions = Table(
         nullable=False,
         unique=True,
     ),
-
-    # Collection provenance
-    #
-    # These values are supplied by the pipeline rather than being
-    # retrieved from AuctionRecordItem.
     Column(
         "collection_run_id",
         Integer,
