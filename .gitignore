@@ -6,3 +6,4 @@ logs/
 __pycache__/
 .pytest_cache/
 scripts/demo.py
+macbid_processed_pilot.sqlite

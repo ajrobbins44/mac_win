@@ -9,9 +9,9 @@ from database.processed_tables import collection_runs as processed_runs
 from database.staging_tables import (
     collection_runs as staging_runs,
 )
-from processing.helpers.normalize import (
-    parse_calendar_date, 
-    parse_utc_timestamp,
+from processing.helpers.dates import (
+    parse_calendar_date_fields, 
+    parse_utc_timestamp_fields,
 )
 from processing.helpers.validation import (
     verify_keys_match,
@@ -28,18 +28,31 @@ MONTH_SCOPE_CORRECTIONS = {
 
 def validate_collection_run_dates(row):
 
-    started = parse_utc_timestamp(row["started_at_utc"], "started_at_utc")
+    timestamps = parse_utc_timestamp_fields(
+        row,
+        (
+            "started_at_utc",
+            "ended_at_utc",
+        )
+    )
+    started = timestamps["started_at_utc"]
+    ended = timestamps["ended_at_utc"]
 
-    if row["ended_at_utc"] is not None:
-        ended = parse_utc_timestamp(row["ended_at_utc"], "ended_at_utc")
-        if ended < started:
-            raise ValueError("ended_at_utc precedes started_at_utc")
+    if ended <= started:
+        raise ValueError("started_at_utc doesn't precede ended_at_utc")
 
-    start_date = parse_calendar_date(row["target_start_date"], "target_start_date")
-    end_date = parse_calendar_date(row["target_end_date"], "target_end_date")
+    dates = parse_calendar_date_fields(
+        row,
+        (
+            "target_start_date",
+            "target_end_date",
+        )
+    )
+    start_date = dates["target_start_date"]
+    end_date = dates["target_end_date"]
 
-    if end_date < start_date:
-        raise ValueError("target_end_date precedes target_start_date")
+    if end_date <= start_date:
+        raise ValueError("target_start_date doesn't precede target_end_date")
 
 # ----------------------------------------------------------------------
 # IMPORT_COLLECTION_RUNS

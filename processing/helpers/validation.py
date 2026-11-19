@@ -1,5 +1,38 @@
 
 # ---------------------------------------------------------
+# VALIDATE_POSITIVE_INTEGERS
+# ---------------------------------------------------------
+
+def validate_positive_integers(row, fields) -> dict[str, int]:
+    """Return the specified fields after validating positive integer values."""
+    validated = {}
+
+    for field in fields:
+        value = row[field]
+
+        if type(value) is not int or value <= 0:
+            raise ValueError(
+                f"{field} must be a positive integer, got {value!r}"
+            )
+
+        validated[field] = value
+
+    return validated
+
+# ---------------------------------------------------------
+# VALIDATE_NONEMPTY_TEXT
+# ---------------------------------------------------------
+
+def validate_nonempty_text(row, fields) -> None:
+    """Require each specified field to contain text beyond whitespace."""
+    for field in fields:
+        value = row[field]
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"{field} must contain nonempty text, got {value!r}"
+            )
+        
+# ---------------------------------------------------------
 # VERIFY_KEYS_MATCH
 # ---------------------------------------------------------
 

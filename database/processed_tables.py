@@ -52,6 +52,7 @@ collection_runs = Table(
         Text,
         nullable=False,
     ),
+    # Nullable because some collection runs may not have ended properly.
     Column(
         "request_ended_at_utc",
         Text,
@@ -73,6 +74,7 @@ collection_runs = Table(
         Text,
         nullable=False,
     ),
+    # May also be null for some collection runs.
     Column(
         "status_reason",
         Text,
@@ -117,35 +119,37 @@ auctions = Table(
 
     # Auction dates
     Column(
-        "scheduled_open_date",
+        "scheduled_open_at_local",
         Text,
         nullable=False,
     ),
     Column(
-        "launched_at_utc",
+        "scheduled_close_at_local",
         Text,
         nullable=False,
     ),
     Column(
-        "scheduled_close_date",
+        "launched_at_local",
         Text,
         nullable=False,
     ),
     Column(
-        "pickup_date",
-        Text,
-        nullable=False,
-    ),
-    Column(
-        "scheduled_abandon_date",
+        "pickup_deadline_at_local",
         Text,
         nullable=False,
     ),
 
-    # Building and location values
-    Column("building_id", Integer, nullable=False),
-    Column("location_id", Integer, nullable=False),
-    Column("location_name", Text),
+    # Building id and location id (from within the building)
+    Column(
+        "building_id", 
+        Integer, 
+        nullable=False
+    ),
+    Column(
+        "location_id", 
+        Integer, 
+        nullable=False
+    ),
     
     # Auction-wide Boolean-like values
     Column("auction_type_id", Integer),
