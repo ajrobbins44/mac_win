@@ -2,7 +2,7 @@
 
 Remember to add verification vs validation distinction
 
-Notes to document later: response collection timestamps always in utc. All other timestamps converted to Henderson time.
+Notes to document later: response collection timestamps always in utc. All other timestamps converted to Henderson time. Make sure validation/testing reflects winter's UTC offset and summer's UTC offset once data from both offsets are included in the processed db. 
 
 ## Collection runs
 

@@ -11,6 +11,7 @@ from database.processed_tables import collection_runs as processed_runs
 
 from processing.helpers.dates import (
     HENDERSON_TIMEZONE, 
+    parse_utc_timestamp,
     parse_utc_timestamp_fields, 
     normalize_henderson_timestamp_fields,
 )
@@ -109,12 +110,10 @@ def import_auctions(
             timestamps = parse_utc_timestamp_fields(
                 row,
                 (
-                    "response_collected_at_utc",
                     "opening_date_source",
                     "closing_date_source",
                 ),
             )
-            response_utc = timestamps["response_collected_at_utc"]
             opened_utc = timestamps["opening_date_source"]
             closed_utc = timestamps["closing_date_source"]
 
@@ -152,10 +151,15 @@ def import_auctions(
                 ("building_id", "location_id"),
             )
 
+            parse_utc_timestamp(
+                row["response_collected_at_utc"],
+                "response_collected_at_utc",
+            )
+
             auction_values = {
                 "auction_number": auction_number, 
                 "collection_run_id": run_id_map[source_run_id],
-                "response_collected_at_utc": response_utc,
+                "response_collected_at_utc": row["response_collected_at_utc"],
                 "scheduled_open_at_local": local_timestamps["opening_date_source"],
                 "scheduled_close_at_local": local_timestamps["closing_date_source"],
                 "launched_at_local": local_timestamps["date_launched_source"],
